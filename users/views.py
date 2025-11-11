@@ -8,12 +8,10 @@ from django.conf import settings
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken
-from .permissions import IsVerifiedUser, IsManagerAndVerified
+from .permissions import IsVerifiedUser
     
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse
-
-from .serializers import ClientSerializer, SecurityPersonnelSerializer, MyTokenObtainPairSerializer
 
 from .models import CustomUser
 
@@ -106,7 +104,7 @@ class SignupUser(APIView):
 
 
 class CookieJWTLoginView(TokenObtainPairView):
-    serializer_class = MyTokenObtainPairSerializer
+    # serializer_class = MyTokenObtainPairSerializer
     
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
@@ -192,8 +190,7 @@ class CookieTokenRefreshView(TokenRefreshView):
         return response
 
 class GetUsersView(APIView):
-    permission_classes = [IsManagerAndVerified]
-
+    
     def get(self, request):
         users = get_user_model().objects.all()
         serializer = UserSerializer(users, many=True)

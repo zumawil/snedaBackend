@@ -6,4 +6,3 @@ from .models import CustomUser
 
 admin.site.register([CustomUser])
 admin.site.register(Permission)
-admin.site.register(Group)
