@@ -10,28 +10,44 @@ from .models import Order, OrderItem
 
 class OrderView(APIView):
 
-    def get(self, request, pk):
-        
+    def get(self, request, pk=None):
         try:
-            order = get_object_or_404(Order, pk=pk, user=request.user)
-            serializer = OrderSerializer(order)
-            return Response(
-                serializer.data, 
-                status=status.HTTP_200_OK
-            )
+            if pk:
+                # Get specific order
+                order = get_object_or_404(Order, pk=pk, user=request.user)
+                serializer = OrderSerializer(order)
+                return Response(
+                    serializer.data, 
+                    status=status.HTTP_200_OK
+                )
+            else:
+                # List all orders for user
+                orders = Order.objects.filter(user=request.user)
+                serializer = OrderSerializer(orders, many=True)
+                return Response(
+                    serializer.data,
+                    status=status.HTTP_200_OK
+                )
         except Exception as e:
             return Response(
                 {'error': str(e)}, 
-                status=status.HTTP_200_OK
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 class OrderItemView(APIView):
 
-    def get(self, request, pk):
+    def get(self, request, pk=None):
         try:
-            order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
-            serializer = OrderItemSerializer(order_item)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            if pk:
+                # Get specific order item
+                order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
+                serializer = OrderItemSerializer(order_item)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            else:
+                # List all order items for user
+                order_items = OrderItem.objects.filter(order__user=request.user)
+                serializer = OrderItemSerializer(order_items, many=True)
+                return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
