@@ -28,7 +28,9 @@ class UserSerializer(serializers.ModelSerializer):
                   'email', 'id', 'is_active',
                   'is_staff', "is_superuser",
                   "last_login","user_permissions",
-                  "verified", "groups", "password"]
+                  "verified", "groups", "password",
+                   "first_name", "last_name", "phone_number", 
+                   "address", "city", "profile_picture"]
         extra_kwargs = {
             'password': {'write_only': True} # makes the password writable but not readable
         }

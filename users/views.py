@@ -199,3 +199,42 @@ class GetUsersView(APIView):
 @ensure_csrf_cookie
 def get_csrf(request):
     return JsonResponse({"detail": "CSRF cookie set"})
+
+class UserProfileView(APIView):
+    def get(self, request):
+        user = request.user
+        serializer = UserSerializer(user)
+        return Response({"user": serializer.data}, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        data = request.data
+        user = request.user
+        serializer = UserSerializer(user, data=data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"user": serializer.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request):
+        data = request.data # get data coming from the request
+        user = request.user # get the user from the request
+        serializer = UserSerializer(user, data=data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"user": serializer.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return Response({"message": "User deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+
+class LogoutUserView(APIView):
+    def post(self, request):
+        response = Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
+        response.delete_cookie('access')
+        response.delete_cookie('refresh')
+        response.delete_cookie('role')
+        return response

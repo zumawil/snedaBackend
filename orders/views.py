@@ -3,8 +3,10 @@ from .serailizer import OrderItemSerializer, OrderSerializer
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
+from users.permissions import IsAdminUser
 
 # Create your views here.
 
@@ -78,5 +80,52 @@ class OrderItemView(APIView):
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
             order_item.delete()
             return Response({'message': 'OrderItem deleted'}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OrderUpdateStatusView(APIView):
+    """
+    Update order status. Only admins (staff or superuser) can update order status.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def patch(self, request, pk):
+        try:
+            # Admin can update any order, so we don't filter by user
+            order = get_object_or_404(Order, pk=pk)
+            
+            # Only allow status field to be updated
+            new_status = request.data.get('status')
+            if not new_status:
+                return Response(
+                    {'error': 'Status field is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate status choice
+            valid_statuses = ['pending', 'shipped', 'delivered']
+            if new_status not in valid_statuses:
+                return Response(
+                    {'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update only the status field
+            order.status = new_status
+            order.save()
+            
+            serializer = OrderSerializer(order)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class OrderCancelView(APIView):
+    def post(self, request, pk):
+        try:
+            order = get_object_or_404(Order, pk=pk, user=request.user)
+            order.status = 'cancelled'
+            order.save()
+            return Response({'message': 'Order cancelled'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
