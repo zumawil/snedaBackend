@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import authentication
 from rest_framework import status
+from rest_framework import generics
 
 from .serializers import ProductImageSerializer, ProductSerializer, CategorySerializer
 from .models import Category, Product, ProductImage
@@ -27,7 +28,7 @@ class CategoryView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-class ProductView(APIView):
+class ProductListView(APIView):
     
     def get(self, request):
         
@@ -44,6 +45,12 @@ class ProductView(APIView):
                 {"error":e},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+
 
 class ProductImageView(APIView):
     def get(self, request):
