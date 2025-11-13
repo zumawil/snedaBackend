@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import authentication, permissions, status
@@ -17,6 +18,11 @@ from .models import CustomUser
 
 import pyotp
 from django.core.mail import send_mail
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 def send_otp_to_user(user):
     secret = pyotp.random_base32()
@@ -238,3 +244,82 @@ class LogoutUserView(APIView):
         response.delete_cookie('refresh')
         response.delete_cookie('role')
         return response
+
+
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.contrib.auth.tokens import default_token_generator
+
+class ChangePasswordView(APIView):
+
+    def post(self, request):
+        email  = request.data.get('email')
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            return Response({'detail': 'User with this email does not exist'}, status=404)
+        
+        if user:
+            ## generate user uid
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            ## generate the token for the url
+            token = default_token_generator.make_token(user)
+            app_url = os.environ.get("APP_URL", "http://localhost:3000")
+            password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={token}"
+            send_mail(
+                "You requested for a password chnage",
+                f"your password reset link is {password_reset_url} ",
+                "noreply@yourapp.com",
+                [user.email],
+            )
+                    
+
+        return Response({'message': 'Password reset link has been sent to your email', 
+        'link': password_reset_url},
+                        status=status.HTTP_202_ACCEPTED)
+
+class ResetPasswordConfirmView(APIView):
+
+    def get(self, request):
+        uid = request.query_params.get('uid')
+        token = request.query_params.get('token')
+
+        user_id = urlsafe_base64_decode(uid).decode()
+        user = get_object_or_404(CustomUser,pk=user_id)
+        is_token_valid = default_token_generator.check_token(user,token)
+        
+        if is_token_valid:
+            return Response({'token':token, 
+            'uid':uid, 'detail':'token is valid'},
+            status=status.HTTP_200_OK)
+        else:
+            return Response({'detail':'invalid or expired token'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+class ResetPasswordView(APIView):
+    
+
+    def post(self, request):
+        new_password = request.data.get('new_password')
+        confirm_password = request.data.get('confirm_password')
+        uid = request.data.get('uid')
+        token = request.data.get('token')
+
+        user_id = urlsafe_base64_decode(uid).decode()
+        try:
+            user = get_object_or_404(CustomUser, pk=user_id)
+        except CustomUser.DoesNotExist():
+            return Response({'detail':'user account not found'}, 
+            status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({'detail': 'Invalid or expired token'}, status=400)
+
+        if new_password == confirm_password and new_password and confirm_password:
+            user.set_password(new_password)
+            user.save()
+            return Response({'detail':'password reset successful'}, 
+            status=status.HTTP_200_OK)
+        else:
+            return Response({'detail':'password reset failed'}, 
+            status=status.HTTP_400_BAD_REQUEST)
