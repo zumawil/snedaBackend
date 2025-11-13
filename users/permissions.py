@@ -1,5 +1,6 @@
 from rest_framework.permissions import BasePermission
 
+# check if the user is verified
 class IsVerifiedUser(BasePermission):
 
     def has_permission(self, request, view):

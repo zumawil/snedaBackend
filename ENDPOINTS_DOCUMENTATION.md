@@ -14,15 +14,18 @@
 | `POST` | `/users/refresh/` | Refresh access token using refresh cookie | ❌ | ✅ Working |
 | `POST` | `/users/verify-otp/` | Verify OTP code sent during signup | ❌ | ✅ Working |
 | `GET` | `/users/users/` | List all users | ✅ | ✅ Working |
+| `GET` | `/users/profile/` | Get current authenticated user profile | ✅ | ✅ Working |
+| `PUT` | `/users/profile/` | Replace user profile data | ✅ | ✅ Working |
+| `PATCH` | `/users/profile/` | Partially update user profile | ✅ | ✅ Working |
+| `DELETE` | `/users/profile/` | Delete own account | ✅ | ✅ Working |
+| `POST` | `/users/logout/` | Logout and clear auth cookies | ✅ | ✅ Working |
 
 **Note:** JWT tokens are stored in HTTP-only cookies for security.
 
 **Missing:**
-- ❌ `GET /users/profile/` - Get current user profile
-- ❌ `PUT/PATCH /users/profile/` - Update user profile
-- ❌ `POST /users/logout/` - Logout (clear cookies)
 - ❌ `POST /users/change-password/` - Change password
 - ❌ `POST /users/reset-password/` - Request password reset
+- ❌ `POST /users/reset-password/confirm/` - Confirm password reset
 
 ---
 
@@ -30,20 +33,26 @@
 
 | Method | Endpoint | Description | Auth Required | Status |
 |--------|----------|-------------|---------------|--------|
-| `GET` | `/categories/` | List all categories | ❌ | ✅ Working |
+| `GET` | `/categories/` | List all categories (returns `products_count` per category) | ✅ (admin+verified) | ✅ Working |
+| `POST` | `/categories/` | Create category | ✅ (admin+verified) | ✅ Working |
+| `GET` | `/categories/<pk>/` | Retrieve category details | ✅ (admin+verified) | ✅ Working |
+| `PUT` | `/categories/<pk>/` | Replace category | ✅ (admin+verified) | ✅ Working |
+| `PATCH` | `/categories/<pk>/` | Partially update category | ✅ (admin+verified) | ✅ Working |
+| `DELETE` | `/categories/<pk>/` | Delete category | ✅ (admin+verified) | ✅ Working |
 | `GET` | `/products/` | List all products | ❌ | ✅ Working |
+| `POST` | `/products/create/` | Create new product | ✅ (admin+verified) | ✅ Working |
 | `GET` | `/products/<pk>/` | Get product details | ❌ | ✅ Working |
-| `PUT` | `/products/<pk>/` | Update product | ✅ | ✅ Working |
-| `PATCH` | `/products/<pk>/` | Partially update product | ✅ | ✅ Working |
-| `DELETE` | `/products/<pk>/` | Delete product | ✅ | ✅ Working |
+| `PUT` | `/products/<pk>/` | Replace product | ✅ (admin+verified) | ✅ Working |
+| `PATCH` | `/products/<pk>/` | Partially update product | ✅ (admin+verified) | ✅ Working |
+| `DELETE` | `/products/<pk>/` | Delete product | ✅ (admin+verified) | ✅ Working |
 | `GET` | `/product-images/` | List all product images | ❌ | ✅ Working |
 
-**Missing Endpoints:**
-- ❌ `POST /categories/` - Create category
-- ❌ `POST /products/` - Create product
+**Notes:**
+- Category list endpoint annotates `products_count` for each category.
+- Product create/update endpoints require both admin and verified permissions.
+
+**Remaining Gaps:**
 - ❌ `POST /product-images/` - Upload product image
-- ❌ `GET /categories/<pk>/` - Get category details
-- ❌ `PUT/PATCH/DELETE /categories/<pk>/` - Update/delete category
 - ❌ `GET /product-images/<pk>/` - Get specific product image
 - ❌ `DELETE /product-images/<pk>/` - Delete product image
 
@@ -59,7 +68,7 @@
 | `GET` | `/cart-items/<pk>/` | Get specific cart item | ✅ | ✅ Working |
 | `PUT` | `/cart-items/<pk>/` | Update cart item quantity | ✅ | ✅ Working |
 | `DELETE` | `/cart-items/<pk>/` | Remove item from cart | ✅ | ✅ Working |
-| `POST` | `/checkout/` | Convert cart to order, clear cart | ✅ | ✅ **FIXED** |
+| `POST` | `/checkout/` | Convert cart to order, clear cart | ✅ | ✅ Working |
 | `POST` | `/add-to-cart/<product_pk>/` | Add product to cart (increments if exists) | ✅ | ✅ Working |
 
 **Fixed:**
@@ -78,10 +87,12 @@
 | `GET` | `/orders/order-items/<pk>/` | Get specific order item | ✅ | ✅ Working |
 | `PUT` | `/orders/order-items/<pk>/` | Update order item | ✅ | ✅ Working |
 | `DELETE` | `/orders/order-items/<pk>/` | Delete order item | ✅ | ✅ Working |
+| `PATCH` | `/orders/order/update-status/<pk>/` | Update order status (admin-only) | ✅ | ✅ Working |
+| `POST` | `/orders/order/cancel/<pk>/` | Cancel own order (user) | ✅ | ✅ Working |
 
-**Missing Endpoints:**
-- ❌ `PUT/PATCH /orders/orders/<pk>/` - Update order status
-- ❌ `DELETE /orders/orders/<pk>/` - Cancel order
+**Admin-only:** `PATCH /orders/order/update-status/<pk>/`
+
+**Notes:** Consider restricting cancellation to `pending` status only.
 
 ---
 
@@ -103,40 +114,30 @@
 - None found! ✅
 
 ### Missing Functionality:
-1. No endpoint to update order status
-2. No endpoint to cancel orders
-3. No endpoint to get user profile
-4. No endpoint to update user profile
-5. No logout endpoint (should clear cookies)
-6. No password reset/change endpoints
-7. No reviews endpoints (reviews app exists but no URLs)
-8. No payments endpoints (payments app exists but no URLs)
-9. No shipping endpoints (shipping app exists but no URLs)
-10. No notifications endpoints (notifications app exists but no URLs)
-11. No product/category creation endpoints (admin only?)
+1. No password change/reset endpoints
+2. No reviews endpoints (reviews app exists but no URLs)
+3. No payments endpoints (payments app exists but no URLs)
+4. No shipping endpoints (shipping app exists but no URLs)
+5. No notifications endpoints (notifications app exists but no URLs)
+6. No product image upload/detail/delete endpoints
 
 ---
 
 ## ✅ Recommended Additions
 
 ### High Priority (New Features):
-1. **Update order status**: `PATCH /orders/orders/<pk>/status/` - Update order status
-2. **User profile**: `GET /users/profile/` - Get current user profile
-3. **Update profile**: `PUT/PATCH /users/profile/` - Update user profile
-4. **Logout**: `POST /users/logout/` - Clear authentication cookies
+1. **Password change**: `POST /users/change-password/` - Change user password
+2. **Password reset request**: `POST /users/reset-password/` - Request password reset
+3. **Password reset confirm**: `POST /users/reset-password/confirm/` - Confirm password reset
 
 ### Medium Priority:
-5. **Order cancellation**: `POST /orders/orders/<pk>/cancel/` - Cancel pending order
-6. **Password change**: `POST /users/change-password/` - Change user password
-7. **Password reset**: `POST /users/reset-password/` - Request password reset
-8. **Product creation** (if admin): `POST /products/` - Create new product
-9. **Category management**: Full CRUD for categories
+4. **Product image upload & management**: `POST/GET/DELETE /product-images/<pk>/`
+5. **Reviews**: CRUD endpoints for product reviews (`/reviews/`)
 
 ### Low Priority (if needed):
-10. **Reviews**: CRUD endpoints for product reviews (`/reviews/`)
-11. **Payments**: Payment processing endpoints (`/payments/`)
-12. **Shipping**: Shipping address and tracking endpoints (`/shipping/`)
-13. **Notifications**: User notification endpoints (`/notifications/`)
+6. **Payments**: Payment processing endpoints (`/payments/`)
+7. **Shipping**: Shipping address and tracking endpoints (`/shipping/`)
+8. **Notifications**: User notification endpoints (`/notifications/`)
 
 ---
 
@@ -144,12 +145,12 @@
 
 | Category | Total Endpoints | Working | Issues | Missing |
 |----------|----------------|---------|--------|---------|
-| Authentication | 5 | 5 | 0 | 4 |
-| Products | 7 | 7 | 0 | 7 |
+| Authentication | 10 | 10 | 0 | 3 |
+| Products | 12 | 12 | 0 | 3 |
 | Cart | 8 | 8 | 0 | 0 |
-| Orders | 7 | 7 | 0 | 2 |
+| Orders | 9 | 9 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **29** | **29** | **0** | **13** |
+| **TOTAL** | **41** | **41** | **0** | **6** |
 
 ---
 
@@ -175,3 +176,22 @@ total_amount = sum(item.get_total_price() for item in order.items.all())
 order.total_amount = total_amount
 order.save()
 ```
+
+**Added:** Admin-only order status update endpoint:
+- `PATCH /orders/order/update-status/<pk>/` (requires admin)
+
+**Added:** Order cancellation endpoint:
+- `POST /orders/order/cancel/<pk>/` (user cancels own order)
+
+**Added:** User profile management endpoints:
+- `GET/PUT/PATCH/DELETE /users/profile/`
+
+**Added:** Logout endpoint:
+- `POST /users/logout/`
+
+**Added:** Category management endpoints:
+- `GET/POST /categories/`
+- `GET/PUT/PATCH/DELETE /categories/<pk>/`
+
+**Added:** Product creation endpoint:
+- `POST /products/create/`
