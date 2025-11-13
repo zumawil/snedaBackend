@@ -15,10 +15,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return obj.get_total_price()
 
 class OrderSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+    # user = UserSerializer(read_only=True)
     items =  OrderItemSerializer(many=True, read_only=True)
     class Meta:
         model = Order
-        fields = ['id','user', 'status','total_amount', 'created_at', 'items']
+        fields = ['id', 'status','total_amount', 'created_at', 'items']
         read_only_fields = ['total_amount']
 

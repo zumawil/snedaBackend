@@ -27,27 +27,19 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAdminUser, IsVerifiedUser]
     
    
-class ProductListView(APIView):
-    
-    def get(self, request):
-        
-        products = Product.objects.all()
-        try:
-            serializer = ProductSerializer(products, many=True)
+class ProductImageListView(generics.ListCreateAPIView):
 
-            return Response(
-                serializer.data, 
-                status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response(
-                {"error":e},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+    serializer_class = ProductImageSerializer
+    queryset = ProductImage.objects.all()
 
-class ProductCreateView(generics.CreateAPIView):
+class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProductImageSerializer
+    queryset = ProductImage.objects.all()
+
+class ProductListCreateView(generics.ListCreateAPIView):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
@@ -57,19 +49,3 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ProductSerializer
 
 
-class ProductImageView(APIView):
-    def get(self, request):
-        
-        productImages = ProductImage.objects.all()
-        try:
-            serializer = ProductImageSerializer(productImages, many=True)
-
-            return Response(
-                serializer.data, 
-                status=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return Response(
-                {"error":e},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )

@@ -124,8 +124,15 @@ class OrderCancelView(APIView):
     def post(self, request, pk):
         try:
             order = get_object_or_404(Order, pk=pk, user=request.user)
-            order.status = 'cancelled'
-            order.save()
-            return Response({'message': 'Order cancelled'}, status=status.HTTP_200_OK)
+            print(order.status)
+            # can only cancel pending order
+            if order.status == "pending":
+                order.status = 'cancelled'
+                order.save()
+                return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)
+            elif order.status == 'cancelled':
+                return Response({'detail':'order already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({'detail':"order can't be cancelled"},  status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -4,10 +4,11 @@ from users.models import CustomUser as User
 # Create your models here.
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
-    status = models.CharField(max_length=50, 
+    status = models.CharField(max_length=50,
                               choices=[('pending', 'Pending'),
-                                        ('shipped', 'Shipped'), 
-                                        ('delivered', 'Delivered')], default='pending')
+                                        ('shipped', 'Shipped'),
+                                        ('delivered', 'Delivered'),
+                                        ('cancelled', 'Cancelled')], default='pending')
     total_amount = models.DecimalField(default=0, max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)                
 
