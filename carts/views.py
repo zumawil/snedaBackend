@@ -6,6 +6,8 @@ from .serializer import CartItemSerializer, CartSerializer
 from orders.serailizer import OrderSerializer
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from rest_framework import generics
+from users.permissions import IsVerifiedUser, IsAdminUser
 # Create your views here.
 
 class CartView(APIView):
@@ -24,61 +26,27 @@ class CartView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+class CartItemListCreateView(generics.ListCreateAPIView):
 
-class CartItemView(APIView):
+    permission_classes = [IsVerifiedUser]
+    serializer_class = CartItemSerializer
 
-    def get(self, request, pk):
-        try:
-            cart_item = get_object_or_404(CartItem, cart__user=request.user, pk=pk)
-            serializer = CartItemSerializer(cart_item)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-    def delete(self, request, pk):
-        try:
-            item = get_object_or_404(CartItem, pk=pk)
-            item.delete()
-            return Response({"info": "item deleted"}, status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+    def get_queryset(self):
+        cart, _ = Cart.objects.get_or_create(user=self.request.user)
+        return cart.items.all()
+    # create the cartItem for the user cart
+    def perform_create(self, serializer):
+        cart, _ = Cart.objects.get_or_create(user=self.request.user)
+        serializer.save(cart=cart)
+
+class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsVerifiedUser]
+    serializer_class = CartItemSerializer
     
-    
-    # def post(self, request):
-    #     serializer = CartItemSerializer(data=request.data)
-    #     if serializer.is_valid():
-    #         cart, created = Cart.objects.get_or_create(user=request.user)
-    #         item = serializer.save(cart=cart)
-    #         return Response(
-    #             CartItemSerializer(item).data,
-    #             status=status.HTTP_201_CREATED
-    #         )
-    #     else:
-    #         return Response(
-    #             serializer.errors,
-    #             status=status.HTTP_400_BAD_REQUEST
-    #         )
-
-    # def put(self, request, pk):
-    #     try:
-    #         item = get_object_or_404(CartItem, cart__user=request.user, pk=pk)
-    #         serializer = CartItemSerializer(item, data=request.data)
-    #         if serializer.is_valid():
-    #             serializer.save()
-    #             return Response(serializer.data, status=status.HTTP_200_OK)
-    #         else:
-    #             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    #     except Exception as e:
-    #         return Response(
-    #             {'error': str(e)},
-    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-    #         )
+    def get_queryset(self):
+        # only allow items belonging to the current user's cart
+        cart, _ = Cart.objects.get_or_create(user=self.request.user)
+        return cart.items.all()
 
 from orders.models import Order, OrderItem
 
@@ -103,6 +71,10 @@ class CheckoutView(APIView):
                     quantity=item.quantity,
                     price=item.product.price
                 )
+
+            amount = sum([item.price * item.quantity for item in order.items.all()])
+            order.total_amount = amount
+            order.save()
                 
             # clear the cart after successful checkout
             cart.items.all().delete()

@@ -251,9 +251,34 @@ class LogoutUserView(APIView):
 
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.contrib.auth.tokens import default_token_generator
+from django.core.cache import cache
 
-class ChangePasswordView(APIView):
+# token generator class
+import secrets
+
+class TokenGenerator:
+    
+    def __init__(self, bytes=32):
+        self.bytes = bytes
+        self.token = None
+        
+    def get_url_safe_bytes(self):
+        self.token = secrets.token_urlsafe(self.bytes)
+        return self.token
+
+    def store_password_token(self, user_pk, expiry_minutes=15):
+        """Store the token in cache for a user with expiry"""
+        if not self.token:
+            raise ValueError("Token not generated yet. Call generate_token() first.")
+        cache.set(f'password_token_{user_pk}', self.token, expiry_minutes * 60)
+
+    @staticmethod
+    def check_token(user_pk, token):
+        """Check if the token matches the cached token"""
+        cached_token = cache.get(f'password_token_{user_pk}')
+        return cached_token == token
+
+class ChangePasswordRequestView(APIView):
 
     def post(self, request):
         email  = request.data.get('email')
@@ -266,16 +291,19 @@ class ChangePasswordView(APIView):
             ## generate user uid
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             ## generate the token for the url
-            token = default_token_generator.make_token(user)
+            token = TokenGenerator()
+            url_token = token.get_url_safe_bytes()
+            
+            token.store_password_token(user.pk) # 15 min
+
             app_url = os.environ.get("APP_URL", "http://localhost:3000")
-            password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={token}"
+            password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={url_token}"
             send_mail(
                 "You requested for a password chnage",
-                f"your password reset link is {password_reset_url} ",
+                f"your password reset link is {password_reset_url} \n link is valid for 15 minutes",
                 "noreply@yourapp.com",
                 [user.email],
             )
-                    
 
         return Response({'message': 'Password reset link has been sent to your email', 
         'link': password_reset_url},
@@ -289,7 +317,8 @@ class ResetPasswordConfirmView(APIView):
 
         user_id = urlsafe_base64_decode(uid).decode()
         user = get_object_or_404(CustomUser,pk=user_id)
-        is_token_valid = default_token_generator.check_token(user,token)
+        
+        is_token_valid = TokenGenerator.check_token(user.id, token)
         
         if is_token_valid:
             return Response({'token':token, 
@@ -315,7 +344,7 @@ class ResetPasswordView(APIView):
             return Response({'detail':'user account not found'}, 
             status=status.HTTP_400_BAD_REQUEST)
 
-        if not default_token_generator.check_token(user, token):
+        if not TokenGenerator.check_token(user_id, token):
             return Response({'detail': 'Invalid or expired token'}, status=400)
 
         if new_password == confirm_password and new_password and confirm_password:
