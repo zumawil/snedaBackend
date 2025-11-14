@@ -6,17 +6,22 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
-from users.permissions import IsAdminUser
+from users.permissions import IsAdminUser, IsVerifiedUser
 
 # Create your views here.
 
 class OrderView(APIView):
+
+    
     """
     Handle user orders.
 
     GET /orders/: List all orders for the authenticated user.
     GET /orders/<pk>/: Retrieve details of a specific order.
     """
+
+    permission_classes = [IsVerifiedUser]
+
     def get(self, request, pk=None):
         try:
             if pk:
@@ -51,6 +56,9 @@ class OrderItemView(APIView):
     PUT /order-items/<pk>/: Update a specific order item.
     DELETE /order-items/<pk>/: Delete a specific order item.
     """
+
+    permission_classes = [IsVerifiedUser]
+
     def get(self, request, pk=None):
         try:
             if pk:
@@ -143,12 +151,18 @@ class OrderCancelView(APIView):
     POST /orders/<pk>/cancel/: Cancel the specified order if its status is 'pending'.
     Only the order owner can cancel their order.
     """
+    permission_classes = [IsVerifiedUser]
+    
     def post(self, request, pk):
         try:
             order = get_object_or_404(Order, pk=pk, user=request.user)
             print(order.status)
             # can only cancel pending order
             if order.status == "pending":
+                # Restore stock for each order item
+                for item in order.items.all():
+                    item.product.stock += item.quantity
+                    item.product.save()
                 order.status = 'cancelled'
                 order.save()
                 return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)

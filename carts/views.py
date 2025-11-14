@@ -12,6 +12,8 @@ from users.permissions import IsVerifiedUser, IsAdminUser
 
 class CartView(APIView):
 
+    permission_classes = [IsVerifiedUser]
+
     def get(self, request):
         try:
             cart, created = Cart.objects.get_or_create(user=request.user)
@@ -52,6 +54,8 @@ from orders.models import Order, OrderItem
 
 class CheckoutView(APIView):
 
+    permission_classes = [IsVerifiedUser]
+
     def post(self, request):
         try:
             cart = Cart.objects.get(user=request.user)
@@ -71,6 +75,9 @@ class CheckoutView(APIView):
                     quantity=item.quantity,
                     price=item.product.price
                 )
+                # Decrease product stock
+                item.product.stock -= item.quantity
+                item.product.save()
 
             amount = sum([item.price * item.quantity for item in order.items.all()])
             order.total_amount = amount
@@ -88,6 +95,8 @@ class CheckoutView(APIView):
 from products.models import Product
 
 class AddToCartView(APIView):
+
+    permission_classes = [IsVerifiedUser]
 
     def post(self, request, product_pk):
         cart, created = Cart.objects.get_or_create(user=request.user)

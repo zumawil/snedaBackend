@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-11-13
+**Last Updated:** 2025-11-14
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 
 ---
@@ -10,7 +10,7 @@
 | Method | Endpoint | Description | Auth Required | Status |
 |--------|----------|-------------|---------------|--------|
 | `POST` | `/users/signup/` | Register new user, sends OTP email | ❌ | ✅ Working |
-| `POST` | `/users/login/` | Login with email/password, returns JWT in cookies | ❌ | ✅ Working |
+| `POST` | `/users/login/` | Login with email/password, returns JWT and role in cookies | ❌ | ✅ Working |
 | `POST` | `/users/refresh/` | Refresh access token using refresh cookie | ❌ | ✅ Working |
 | `POST` | `/users/verify-otp/` | Verify OTP code sent during signup | ❌ | ✅ Working |
 | `GET` | `/users/users/` | List all users | ✅ | ✅ Working |
@@ -23,7 +23,7 @@
 | `POST` | `/users/reset-password/` | Request password reset | ❌ | ✅ Working |
 | `POST` | `/users/reset-password/confirm/` | Confirm password reset | ❌ | ✅ Working |
 
-**Note:** JWT tokens are stored in HTTP-only cookies for security.
+**Note:** JWT tokens are stored in HTTP-only cookies for security. The login endpoint also sets a 'role' cookie (non-HTTP-only) containing the user's group name.
 
 **Missing:**
 
@@ -33,26 +33,26 @@
 
 | Method | Endpoint | Description | Auth Required | Status |
 |--------|----------|-------------|---------------|--------|
-| `GET` | `/categories/` | List all categories (returns `products_count` per category) | ✅ (admin+verified) | ✅ Working |
-| `POST` | `/categories/` | Create category | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/categories/<pk>/` | Retrieve category details | ✅ (admin+verified) | ✅ Working |
-| `PUT` | `/categories/<pk>/` | Replace category | ✅ (admin+verified) | ✅ Working |
-| `PATCH` | `/categories/<pk>/` | Partially update category | ✅ (admin+verified) | ✅ Working |
-| `DELETE` | `/categories/<pk>/` | Delete category | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/products/` | List all products | ✅ (admin+verified) | ✅ Working |
-| `POST` | `/products/` | Create new product | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/products/<pk>/` | Get product details | ❌ | ✅ Working |
-| `PUT` | `/products/<pk>/` | Replace product | ✅ (admin+verified) | ✅ Working |
-| `PATCH` | `/products/<pk>/` | Partially update product | ✅ (admin+verified) | ✅ Working |
-| `DELETE` | `/products/<pk>/` | Delete product | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/product-images/` | List all product images | ✅ (admin+verified) | ✅ Working |
-| `POST` | `/product-images/` | Upload product image | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/product-images/<pk>/` | Get specific product image | ✅ (admin+verified) | ✅ Working |
-| `DELETE` | `/product-images/<pk>/` | Delete product image | ✅ (admin+verified) | ✅ Working |
+| `GET` | `/categories/` | List all categories (returns `products_count` per category) | ✅ (verified) | ✅ Working |
+| `POST` | `/categories/` | Create category | ✅ (verified) | ✅ Working |
+| `GET` | `/categories/<pk>/` | Retrieve category details | ✅ (verified) | ✅ Working |
+| `PUT` | `/categories/<pk>/` | Replace category | ✅ (verified) | ✅ Working |
+| `PATCH` | `/categories/<pk>/` | Partially update category | ✅ (verified) | ✅ Working |
+| `DELETE` | `/categories/<pk>/` | Delete category | ✅ (verified) | ✅ Working |
+| `GET` | `/products/` | List all products | ✅ (verified) | ✅ Working |
+| `POST` | `/products/` | Create new product | ✅ (verified) | ✅ Working |
+| `GET` | `/products/<pk>/` | Get product details | ✅ (verified) | ✅ Working |
+| `PUT` | `/products/<pk>/` | Replace product | ✅ (verified) | ✅ Working |
+| `PATCH` | `/products/<pk>/` | Partially update product | ✅ (verified) | ✅ Working |
+| `DELETE` | `/products/<pk>/` | Delete product | ✅ (verified) | ✅ Working |
+| `GET` | `/product-images/` | List all product images | ✅ (verified) | ✅ Working |
+| `POST` | `/product-images/` | Upload product image | ✅ (verified) | ✅ Working |
+| `GET` | `/product-images/<pk>/` | Get specific product image | ✅ (verified) | ✅ Working |
+| `DELETE` | `/product-images/<pk>/` | Delete product image | ✅ (verified) | ✅ Working |
 
 **Notes:**
 - Category list endpoint annotates `products_count` for each category.
-- Product and product image endpoints require both admin and verified permissions.
+- Product and product image endpoints require verified permissions.
 
 **Remaining Gaps:**
 
@@ -197,3 +197,7 @@ order.save()
 - `POST /product-images/`
 - `GET /product-images/<pk>/`
 - `DELETE /product-images/<pk>/`
+
+**Modified:** Login endpoint now sets 'role' cookie with user's group name.
+
+**Modified:** Product, category, and product image endpoints now require only verified user permissions instead of admin + verified.

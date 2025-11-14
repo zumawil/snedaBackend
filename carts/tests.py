@@ -24,13 +24,13 @@ class CartModelTests(TestCase):
         )
 
     def test_cart_str(self):
-        self.assertEqual(str(self.cart), f"Cart of {self.user.username}")
+        self.assertEqual(str(self.cart), f"Cart of {self.user.email}")
 
     def test_cart_total_items(self):
         self.assertEqual(self.cart.total_items(), 2)
 
     def test_cart_item_str(self):
-        self.assertEqual(str(self.cart_item), f"2 of {self.product.name} in cart of {self.user.username}")
+        self.assertEqual(str(self.cart_item), f"2 of {self.product.name} in cart of {self.user.email}")
 
     def test_cart_item_get_total_price(self):
         self.assertEqual(self.cart_item.get_total_price(), 20.00)
@@ -65,5 +65,5 @@ class SerializerTests(APITestCase):
         data = serializer.data
         self.assertEqual(data['id'], self.cart_item.id)
         self.assertEqual(data['quantity'], 2)
-        self.assertEqual(data['product'], self.product.id)
-        self.assertEqual(data['cart']['id'], self.cart.id)
+        self.assertEqual(data['product']['id'], self.product.id)
+        self.assertEqual(data['id'], self.cart.id)

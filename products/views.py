@@ -22,7 +22,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
     """
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAdminUser, IsVerifiedUser]
+    permission_classes = [ IsVerifiedUser]
 
     def get_queryset(self):
         # calculate produt count for all the categories in the table
@@ -38,7 +38,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAdminUser, IsVerifiedUser]
+    permission_classes = [ IsVerifiedUser]
 
 
 class ProductImageListView(generics.ListCreateAPIView):
@@ -48,7 +48,7 @@ class ProductImageListView(generics.ListCreateAPIView):
     GET: Retrieve a list of all product images.
     POST: Create a new product image (requires product ID and image file).
     """
-    permission_classes = [IsAdminUser, IsVerifiedUser]
+    permission_classes = [ IsVerifiedUser]
     serializer_class = ProductImageSerializer
     queryset = ProductImage.objects.all()
 
@@ -60,7 +60,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     PUT/PATCH: Update product image.
     DELETE: Delete product image.
     """
-    permission_classes = [IsAdminUser, IsVerifiedUser]
+    permission_classes = [ IsVerifiedUser]
 
     serializer_class = ProductImageSerializer
     queryset = ProductImage.objects.all()
@@ -72,7 +72,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
     GET: Retrieve a list of all products with their images.
     POST: Create a new product (requires name, category, description, price, stock).
     """
-    permission_classes = [IsAdminUser, IsVerifiedUser]
+    permission_classes = [ IsVerifiedUser]
 
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -86,7 +86,7 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     PUT/PATCH: Update product (Admin and Verified User required).
     DELETE: Delete product (Admin and Verified User required).
     """
-    permission_classes = [IsAdminUser, IsVerifiedUser]
+    permission_classes = [ IsVerifiedUser]
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
 

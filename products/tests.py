@@ -22,7 +22,7 @@ class SerializerTests(APITestCase):
         serializer = ProductSerializer(self.product)
         data = serializer.data
         self.assertEqual(data['name'], self.product.name)
-        self.assertEqual(data['category'], self.product.category.id)
+        self.assertEqual(data['category'], self.product.category.name)
         self.assertEqual(data['description'], self.product.description)
         self.assertEqual(float(data['price']), float(self.product.price))
         self.assertEqual(data['stock'], self.product.stock)

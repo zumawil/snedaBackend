@@ -9,7 +9,7 @@ from django.conf import settings
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken
-from .permissions import IsVerifiedUser
+from .permissions import IsVerifiedUser, IsAdminUser
     
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse
@@ -171,6 +171,8 @@ class CookieJWTLoginView(TokenObtainPairView):
 from rest_framework_simplejwt.views import TokenRefreshView
 
 class CookieTokenRefreshView(TokenRefreshView):
+    permission_classes = [permissions.AllowAny]
+
     def post(self, request, *args, **kwargs):
         refresh_token = request.COOKIES.get("refresh")
         request.data['refresh'] = refresh_token
@@ -199,7 +201,9 @@ class CookieTokenRefreshView(TokenRefreshView):
         return response
 
 class GetUsersView(APIView):
-    
+
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
         users = get_user_model().objects.all()
         serializer = UserSerializer(users, many=True)
@@ -210,6 +214,8 @@ def get_csrf(request):
     return JsonResponse({"detail": "CSRF cookie set"})
 
 class UserProfileView(APIView):
+    permission_classes = [IsVerifiedUser]
+
     def get(self, request):
         user = request.user
         serializer = UserSerializer(user)
@@ -241,6 +247,8 @@ class UserProfileView(APIView):
         return Response({"message": "User deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 
 class LogoutUserView(APIView):
+    permission_classes = [IsVerifiedUser]
+
     def post(self, request):
         response = Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
         response.delete_cookie('access')
@@ -279,6 +287,7 @@ class TokenGenerator:
         return cached_token == token
 
 class ChangePasswordRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         email  = request.data.get('email')
@@ -310,6 +319,7 @@ class ChangePasswordRequestView(APIView):
                         status=status.HTTP_202_ACCEPTED)
 
 class ResetPasswordConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         uid = request.query_params.get('uid')
@@ -329,7 +339,7 @@ class ResetPasswordConfirmView(APIView):
             status=status.HTTP_400_BAD_REQUEST)
 
 class ResetPasswordView(APIView):
-    
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         new_password = request.data.get('new_password')

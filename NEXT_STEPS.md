@@ -1,6 +1,6 @@
 # 🚀 Next Steps - Sneda Ecommerce API
 
-**Last Updated:** 2025-11-13
+**Last Updated:** 2025-11-14
 **Status:** All current endpoints working ✅ | Focus shifting to remaining features
 
 ---
@@ -15,9 +15,9 @@
 
 ## ⏭️ What to do next (Immediate)
 
-1) Order cancellation rules (consistency)
-- Restrict cancel to `pending` orders only
-- Optional: restore stock on cancel
+1) Order cancellation rules (consistency) ✅ Completed
+- Restrict cancel to `pending` orders only ✅
+- Optional: restore stock on cancel ✅
 - Add tests and docs
 
 ---
@@ -74,7 +74,7 @@
 - User Profile Management — `GET/PUT/PATCH/DELETE /users/profile/`
 - Logout — `POST /users/logout/`
 - Order Status Update (Admin-only) — `PATCH /orders/order/update-status/<pk>/`
-- Order Cancellation — `POST /orders/order/cancel/<pk>/` (base flow)
+- Order Cancellation — `POST /orders/order/cancel/<pk>/` (base flow + stock restore)
 - Product Creation — `POST /products/`
 - Category Management — `GET/POST /categories/`, `GET/PUT/PATCH/DELETE /categories/<pk>/`
 - Password Management — `POST /users/change-password/`, `POST /users/reset-password/`, `POST /users/reset-password/confirm/`
