@@ -6,7 +6,6 @@ from .serializer import CartItemSerializer, CartSerializer
 from orders.serailizer import OrderSerializer
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from rest_framework.generics import ListCreateAPIView
 # Create your views here.
 
 class CartView(APIView):
@@ -41,7 +40,7 @@ class CartItemView(APIView):
         
     def delete(self, request, pk):
         try:
-            item = get_object_or_404(CartItem, cart__user=request.user, pk=pk)
+            item = get_object_or_404(CartItem, pk=pk)
             item.delete()
             return Response({"info": "item deleted"}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
@@ -66,31 +65,20 @@ class CartItemView(APIView):
     #             status=status.HTTP_400_BAD_REQUEST
     #         )
 
-    def put(self, request, pk):
-        try:
-            item = get_object_or_404(CartItem, cart__user=request.user, pk=pk)
-            serializer = CartItemSerializer(item, data=request.data)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            else:
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-class CartItemListCreateView(ListCreateAPIView):
-    queryset = CartItem.objects.all()
-    serializer_class = CartItemSerializer
-    
-    def get_queryset(self):
-        return CartItem.objects.filter(cart__user=self.request.user)
-    
-    def perform_create(self, serializer):
-        cart, created = Cart.objects.get_or_create(user=self.request.user)
-        serializer.save(cart=cart)
+    # def put(self, request, pk):
+    #     try:
+    #         item = get_object_or_404(CartItem, cart__user=request.user, pk=pk)
+    #         serializer = CartItemSerializer(item, data=request.data)
+    #         if serializer.is_valid():
+    #             serializer.save()
+    #             return Response(serializer.data, status=status.HTTP_200_OK)
+    #         else:
+    #             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    #     except Exception as e:
+    #         return Response(
+    #             {'error': str(e)},
+    #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+    #         )
 
 from orders.models import Order, OrderItem
 
@@ -115,11 +103,8 @@ class CheckoutView(APIView):
                     quantity=item.quantity,
                     price=item.product.price
                 )
-            # Calculate total amount
-            total_amount = sum(item.get_total_price() for item in order.items.all())
-            order.total_amount = total_amount
-            order.save()
-            # clear the cart
+                
+            # clear the cart after successful checkout
             cart.items.all().delete()
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -133,7 +118,6 @@ from products.models import Product
 class AddToCartView(APIView):
 
     def post(self, request, product_pk):
-        # get cart associated to user by checking if the cart exists, if not create it
         cart, created = Cart.objects.get_or_create(user=request.user)
 
         try:
@@ -143,14 +127,14 @@ class AddToCartView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # crete or get an item in the cart
+        # check if the cart item is already created in the cart
         cart_item, created = CartItem.objects.get_or_create(
             defaults={'quantity': 1},
             product=product,
             cart=cart
         )
         
-        # if the cart item already exists, increment the quantity
+        # if the cart item already exists
         if not created:
             cart_item.quantity += 1
             cart_item.save()
