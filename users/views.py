@@ -160,8 +160,11 @@ class CookieJWTLoginView(TokenObtainPairView):
             max_age=604800,
             path="/",
         )
-        
-    
+
+        # For Swagger compatibility, include tokens in response if requested
+        if request.GET.get('include_tokens') == 'true':
+            response.data['access'] = access_token
+            response.data['refresh'] = refresh_token
 
         return response
 

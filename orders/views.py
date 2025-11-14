@@ -11,7 +11,12 @@ from users.permissions import IsAdminUser
 # Create your views here.
 
 class OrderView(APIView):
+    """
+    Handle user orders.
 
+    GET /orders/: List all orders for the authenticated user.
+    GET /orders/<pk>/: Retrieve details of a specific order.
+    """
     def get(self, request, pk=None):
         try:
             if pk:
@@ -37,7 +42,15 @@ class OrderView(APIView):
             )
 
 class OrderItemView(APIView):
+    """
+    Handle order items.
 
+    GET /order-items/: List all order items for the authenticated user.
+    GET /order-items/<pk>/: Retrieve details of a specific order item.
+    POST /order-items/: Create a new order item.
+    PUT /order-items/<pk>/: Update a specific order item.
+    DELETE /order-items/<pk>/: Delete a specific order item.
+    """
     def get(self, request, pk=None):
         try:
             if pk:
@@ -86,7 +99,10 @@ class OrderItemView(APIView):
 
 class OrderUpdateStatusView(APIView):
     """
-    Update order status. Only admins (staff or superuser) can update order status.
+    Update order status (Admin only).
+
+    PATCH /orders/<pk>/status/: Update the status of a specific order.
+    Requires admin permissions. Valid statuses: pending, shipped, delivered.
     """
     permission_classes = [IsAuthenticated, IsAdminUser]
     
@@ -121,6 +137,12 @@ class OrderUpdateStatusView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class OrderCancelView(APIView):
+    """
+    Cancel a pending order.
+
+    POST /orders/<pk>/cancel/: Cancel the specified order if its status is 'pending'.
+    Only the order owner can cancel their order.
+    """
     def post(self, request, pk):
         try:
             order = get_object_or_404(Order, pk=pk, user=request.user)

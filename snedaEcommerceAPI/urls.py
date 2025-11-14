@@ -26,7 +26,10 @@ schema_view = get_schema_view(
     openapi.Info(
         title="Sneda Ecommerce API",
         default_version='v1',
-        description="API documentation for Sneda Ecommerce",
+        description="Comprehensive API documentation for Sneda Ecommerce platform. Manage products, users, carts, orders, and more.",
+        terms_of_service="https://www.google.com/policies/terms/",
+        contact=openapi.Contact(email="contact@sneda.com"),
+        license=openapi.License(name="BSD License"),
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),

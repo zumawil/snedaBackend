@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** After latest changes  
+**Last Updated:** 2025-11-13
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 
 ---
@@ -19,13 +19,13 @@
 | `PATCH` | `/users/profile/` | Partially update user profile | ✅ | ✅ Working |
 | `DELETE` | `/users/profile/` | Delete own account | ✅ | ✅ Working |
 | `POST` | `/users/logout/` | Logout and clear auth cookies | ✅ | ✅ Working |
+| `POST` | `/users/change-password/` | Change user password | ✅ | ✅ Working |
+| `POST` | `/users/reset-password/` | Request password reset | ❌ | ✅ Working |
+| `POST` | `/users/reset-password/confirm/` | Confirm password reset | ❌ | ✅ Working |
 
 **Note:** JWT tokens are stored in HTTP-only cookies for security.
 
 **Missing:**
-- ❌ `POST /users/change-password/` - Change password
-- ❌ `POST /users/reset-password/` - Request password reset
-- ❌ `POST /users/reset-password/confirm/` - Confirm password reset
 
 ---
 
@@ -39,22 +39,22 @@
 | `PUT` | `/categories/<pk>/` | Replace category | ✅ (admin+verified) | ✅ Working |
 | `PATCH` | `/categories/<pk>/` | Partially update category | ✅ (admin+verified) | ✅ Working |
 | `DELETE` | `/categories/<pk>/` | Delete category | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/products/` | List all products | ❌ | ✅ Working |
-| `POST` | `/products/create/` | Create new product | ✅ (admin+verified) | ✅ Working |
+| `GET` | `/products/` | List all products | ✅ (admin+verified) | ✅ Working |
+| `POST` | `/products/` | Create new product | ✅ (admin+verified) | ✅ Working |
 | `GET` | `/products/<pk>/` | Get product details | ❌ | ✅ Working |
 | `PUT` | `/products/<pk>/` | Replace product | ✅ (admin+verified) | ✅ Working |
 | `PATCH` | `/products/<pk>/` | Partially update product | ✅ (admin+verified) | ✅ Working |
 | `DELETE` | `/products/<pk>/` | Delete product | ✅ (admin+verified) | ✅ Working |
-| `GET` | `/product-images/` | List all product images | ❌ | ✅ Working |
+| `GET` | `/product-images/` | List all product images | ✅ (admin+verified) | ✅ Working |
+| `POST` | `/product-images/` | Upload product image | ✅ (admin+verified) | ✅ Working |
+| `GET` | `/product-images/<pk>/` | Get specific product image | ✅ (admin+verified) | ✅ Working |
+| `DELETE` | `/product-images/<pk>/` | Delete product image | ✅ (admin+verified) | ✅ Working |
 
 **Notes:**
 - Category list endpoint annotates `products_count` for each category.
-- Product create/update endpoints require both admin and verified permissions.
+- Product and product image endpoints require both admin and verified permissions.
 
 **Remaining Gaps:**
-- ❌ `POST /product-images/` - Upload product image
-- ❌ `GET /product-images/<pk>/` - Get specific product image
-- ❌ `DELETE /product-images/<pk>/` - Delete product image
 
 ---
 
@@ -114,25 +114,17 @@
 - None found! ✅
 
 ### Missing Functionality:
-1. No password change/reset endpoints
-2. No reviews endpoints (reviews app exists but no URLs)
-3. No payments endpoints (payments app exists but no URLs)
-4. No shipping endpoints (shipping app exists but no URLs)
-5. No notifications endpoints (notifications app exists but no URLs)
-6. No product image upload/detail/delete endpoints
+1. No reviews endpoints (reviews app exists but no URLs)
+2. No payments endpoints (payments app exists but no URLs)
+3. No shipping endpoints (shipping app exists but no URLs)
+4. No notifications endpoints (notifications app exists but no URLs)
 
 ---
 
 ## ✅ Recommended Additions
 
-### High Priority (New Features):
-1. **Password change**: `POST /users/change-password/` - Change user password
-2. **Password reset request**: `POST /users/reset-password/` - Request password reset
-3. **Password reset confirm**: `POST /users/reset-password/confirm/` - Confirm password reset
-
 ### Medium Priority:
-4. **Product image upload & management**: `POST/GET/DELETE /product-images/<pk>/`
-5. **Reviews**: CRUD endpoints for product reviews (`/reviews/`)
+1. **Reviews**: CRUD endpoints for product reviews (`/reviews/`)
 
 ### Low Priority (if needed):
 6. **Payments**: Payment processing endpoints (`/payments/`)
@@ -145,12 +137,12 @@
 
 | Category | Total Endpoints | Working | Issues | Missing |
 |----------|----------------|---------|--------|---------|
-| Authentication | 10 | 10 | 0 | 3 |
-| Products | 12 | 12 | 0 | 3 |
+| Authentication | 13 | 13 | 0 | 0 |
+| Products | 15 | 15 | 0 | 0 |
 | Cart | 8 | 8 | 0 | 0 |
 | Orders | 9 | 9 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **41** | **41** | **0** | **6** |
+| **TOTAL** | **47** | **47** | **0** | **0** |
 
 ---
 
@@ -194,4 +186,14 @@ order.save()
 - `GET/PUT/PATCH/DELETE /categories/<pk>/`
 
 **Added:** Product creation endpoint:
-- `POST /products/create/`
+- `POST /products/`
+
+**Added:** Password management endpoints:
+- `POST /users/change-password/`
+- `POST /users/reset-password/`
+- `POST /users/reset-password/confirm/`
+
+**Added:** Product image management endpoints:
+- `POST /product-images/`
+- `GET /product-images/<pk>/`
+- `DELETE /product-images/<pk>/`
