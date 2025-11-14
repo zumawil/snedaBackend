@@ -8,4 +8,5 @@ urlpatterns = [
     path('products/<int:pk>/', views.ProductDetailView.as_view(), name='product-detail'), # get a product by id
     path('product-images/', views.ProductImageListView.as_view(), name='product-images'), # list all product images
     path('product-images/<int:pk>/', views.ProductImageDetailView.as_view(), name='product-image-detail'), # get a product image by id
+    path('product-reviews/', views.GetProductReviewsView.as_view(), name='get-product_reviews'),
 ]

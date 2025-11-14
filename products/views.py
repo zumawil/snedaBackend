@@ -6,6 +6,9 @@ from rest_framework import status
 from rest_framework import generics
 from users.permissions import IsAdminUser, IsVerifiedUser
 from django.db.models import Count
+from rest_framework import permissions
+from reviews.serializers import ReviewsSerializer
+from django.shortcuts import get_object_or_404
 
 from .serializers import ProductImageSerializer, ProductSerializer, CategorySerializer
 from .models import Category, Product, ProductImage
@@ -91,3 +94,25 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ProductSerializer
 
 
+class GetProductReviewsView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        product_id = request.data.get('product')
+
+        if not product_id:
+            return Response(
+                {"error": "Product name is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get product or return 404
+        product = get_object_or_404(Product, id=product_id)
+
+        # Serialize all reviews for this product
+        reviews = ReviewsSerializer(product.reviews.all(), many=True)
+
+        return Response(
+            {"data": reviews.data},
+            status=status.HTTP_200_OK
+        )
