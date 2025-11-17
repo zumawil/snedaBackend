@@ -1,15 +1,15 @@
 # 🚀 Next Steps - Sneda Ecommerce API
 
-**Last Updated:** 2025-11-14
-**Status:** All current endpoints working ✅ | Focus shifting to remaining features
+**Last Updated:** 2025-11-17
+**Status:** Core endpoints working ✅ | Checkout creates Orders atomically but payment integration is pending
 
 ---
 
 ## 📋 Quick Summary
 
-- ✅ **47 endpoints** currently working
+- ✅ **51 endpoints** currently working
 - ✅ **0 critical bugs** found
-- 🎯 **4 feature areas** remaining (reviews, payments, shipping, notifications)
+- 🎯 **3 feature areas** remaining (payments, shipping, notifications)
 
 ---
 
@@ -22,29 +22,36 @@
 
 ---
 
+2) Checkout / Order hardening (NEW - immediate)
+- Add idempotency support for checkout requests (require `X-Idempotency-Key` header or accept a key in request body). Persist a CheckoutAttempt or tie the idempotency key to an Order to avoid duplicate orders on retries.
+- Ensure Order has a `status` field (DRAFT/PENDING/PAID/FAILED) and store payment provider IDs when integrating a gateway.
+- Create a draft Order or CheckoutAttempt before calling external payment APIs so webhooks can reconcile state.
+- Return appropriate 4xx errors for expected conditions (e.g., 409 Conflict for stock races) and log failures.
+
+
 ## 🔥 High Priority
 
-### 1. Order Cancellation Enhancements
-**Update existing:** `POST /orders/order/cancel/<pk>/`
+### 1. Order Cancellation Enhancements ✅ Completed
+**Updated:** `POST /orders/order/cancel/<pk>/`
 
-**Implementation steps:**
-1. Allow cancel only if `status == 'pending'`
-2. Add `cancelled` to status choices if not present
-3. Restore stock optionally; audit log
-4. Tests + docs
+**Implemented:**
+1. ✅ Allow cancel only if `status == 'pending'`
+2. ✅ Added `cancelled` status and stock restoration
+3. ✅ Tests and documentation updated
 
 ---
 
 ## 🟡 Medium Priority
 
-### 2. Reviews System
-**Endpoints to create:**
-- `GET /reviews/`, `POST /reviews/`, `GET/PUT/PATCH/DELETE /reviews/<pk>/`
+### 2. Reviews System ✅ Completed
+**Endpoints implemented:**
+- `GET /reviews/`, `POST /reviews/`, `GET /reviews/<pk>/`, `DELETE /reviews/<pk>/`
 
-**Implementation steps:**
-1. Serializer and views (ListCreate, RetrieveUpdateDestroy)
-2. URL routes and permissions (owner can update/delete)
-3. Filtering by product/user; pagination
+**Features:**
+- Users can only review purchased & delivered products
+- One review per product per user
+- Rating 1-5, text content
+- Proper validation and permissions
 
 ---
 
@@ -79,15 +86,15 @@
 - Category Management — `GET/POST /categories/`, `GET/PUT/PATCH/DELETE /categories/<pk>/`
 - Password Management — `POST /users/change-password/`, `POST /users/reset-password/`, `POST /users/reset-password/confirm/`
 - Product Image Management — `POST /product-images/`, `GET /product-images/<pk>/`, `DELETE /product-images/<pk>/`
+- Reviews System — `GET/POST /reviews/`, `GET/DELETE /reviews/<pk>/` (with purchase validation)
 
 ---
 
 ## 🎯 Recommended Implementation Order
-1) Order Cancellation Enhancements (High)
-2) Reviews (Medium)
-3) Payments (Medium)
-4) Shipping (Low)
-5) Notifications (Low)
+1) Reviews ✅ Completed
+2) Payments (Medium)
+3) Shipping (Low)
+4) Notifications (Low)
 
 ---
 
@@ -98,6 +105,15 @@
 - Use consistent error response format
 
 ---
+
+## 🛠️ Recommended Immediate Checklist (apply now)
+- [ ] Add idempotency key handling for `/checkout/` and persist keys with a CheckoutAttempt or Order
+- [ ] Ensure `Order.status` exists and set new orders to `PENDING` or `DRAFT` while awaiting payment
+- [ ] Return 4xx errors for expected failures (e.g., 409 Conflict for stock races) and avoid 500 for expected conditions
+- [ ] Add unit/integration tests for concurrent checkout and stock validation
+- [ ] Add logging/metrics for checkout failures and stock update conflicts
+- [ ] Create a short migration plan if you add a CheckoutAttempt/draft Order model
+
 
 ## ✅ Checklist Template
 - [ ] Create/update view class

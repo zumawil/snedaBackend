@@ -338,7 +338,7 @@ class ResetPasswordConfirmView(APIView):
             return Response({'detail':'invalid or expired token'},
             status=status.HTTP_400_BAD_REQUEST)
 
-class ResetPasswordView(APIView):
+class ResetPasswordView(APIView):   
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -365,3 +365,14 @@ class ResetPasswordView(APIView):
         else:
             return Response({'detail':'password reset failed'}, 
             status=status.HTTP_400_BAD_REQUEST)
+
+class GetUserSession(APIView):
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        session_count = request.session.get('count', 0)
+        session_count += 1
+        request.session['count'] = session_count
+        session_data = request.session.items()
+        return Response({"session_data": dict(session_data)}, status=status.HTTP_200_OK)

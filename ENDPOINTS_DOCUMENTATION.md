@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-11-14
+**Last Updated:** 2025-11-17
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 
 ---
@@ -49,6 +49,7 @@
 | `POST` | `/product-images/` | Upload product image | ✅ (verified) | ✅ Working |
 | `GET` | `/product-images/<pk>/` | Get specific product image | ✅ (verified) | ✅ Working |
 | `DELETE` | `/product-images/<pk>/` | Delete product image | ✅ (verified) | ✅ Working |
+| `POST` | `/product-reviews/` | Get all reviews for a specific product | ❌ | ✅ Working |
 
 **Notes:**
 - Category list endpoint annotates `products_count` for each category.
@@ -74,6 +75,8 @@
 **Fixed:**
 1. ✅ **CheckoutView** - Now calculates `total_amount` correctly by summing all order items.
 
+**Implementation note (current):** The `/checkout/` endpoint now performs server-side validation and creates an Order inside a database transaction. It validates product availability and stock, atomically decrements stock using an F() update, creates OrderItems, computes `total_amount`, and clears the user's cart. Payment integration is not yet implemented — the view creates an order but does not validate external payment provider status. See "Missing" and "Recommended Additions" below for production hardening items.
+
 ---
 
 ## 📋 Orders (`/orders/`)
@@ -92,7 +95,24 @@
 
 **Admin-only:** `PATCH /orders/order/update-status/<pk>/`
 
-**Notes:** Consider restricting cancellation to `pending` status only.
+**Notes:** Cancellation restricted to `pending` status only. Stock is restored upon cancellation.
+
+---
+
+## ⭐ Reviews (`/`)
+
+| Method | Endpoint | Description | Auth Required | Status |
+|--------|----------|-------------|---------------|--------|
+| `GET` | `/reviews/` | List all reviews for authenticated user | ✅ | ✅ Working |
+| `POST` | `/reviews/` | Create new review | ✅ | ✅ Working |
+| `GET` | `/reviews/<pk>/` | Get specific review (user's own) | ✅ | ✅ Working |
+| `DELETE` | `/reviews/<pk>/` | Delete review (owner only) | ✅ | ✅ Working |
+
+**Notes:**
+- Users can only review products they've purchased and received (order status: `delivered`)
+- One review per product per user
+- Rating scale: 1-5 stars
+- Product specified by name in POST request
 
 ---
 
@@ -108,28 +128,28 @@
 ## 🔍 Issues Summary
 
 ### Critical Issues:
-- ✅ **All fixed!** No critical issues found.
+1. Payments: No payment provider integration or payment-state reconciliation yet. While the checkout creates Orders atomically, you must add payment tracking (PaymentIntent IDs, webhooks) and idempotency to be production-ready for paid checkouts.
 
 ### Code Quality Issues:
 - None found! ✅
 
 ### Missing Functionality:
-1. No reviews endpoints (reviews app exists but no URLs)
-2. No payments endpoints (payments app exists but no URLs)
-3. No shipping endpoints (shipping app exists but no URLs)
-4. No notifications endpoints (notifications app exists but no URLs)
+1. Payments endpoints and payment-provider integration (payments app exists but no URLs) — REQUIRED for real purchases
+2. Idempotency / CheckoutAttempt or Draft Order tracking to avoid duplicate orders on retries and to reconcile webhooks
+3. Shipping endpoints (shipping app exists but no URLs)
+4. Notifications endpoints (notifications app exists but no URLs)
 
 ---
 
 ## ✅ Recommended Additions
 
 ### Medium Priority:
-1. **Reviews**: CRUD endpoints for product reviews (`/reviews/`)
+1. **Payments**: Payment processing endpoints (`/payments/`) and PaymentIntent/webhook reconciliation
+2. **Idempotency & Draft Orders**: Add a `CheckoutAttempt` or draft `Order` model that stores idempotency keys, payment provider IDs, and cart snapshots to support retries and webhook reconciliation.
 
 ### Low Priority (if needed):
-6. **Payments**: Payment processing endpoints (`/payments/`)
-7. **Shipping**: Shipping address and tracking endpoints (`/shipping/`)
-8. **Notifications**: User notification endpoints (`/notifications/`)
+2. **Shipping**: Shipping address and tracking endpoints (`/shipping/`)
+3. **Notifications**: User notification endpoints (`/notifications/`)
 
 ---
 
@@ -138,11 +158,12 @@
 | Category | Total Endpoints | Working | Issues | Missing |
 |----------|----------------|---------|--------|---------|
 | Authentication | 13 | 13 | 0 | 0 |
-| Products | 15 | 15 | 0 | 0 |
+| Products | 16 | 16 | 0 | 0 |
 | Cart | 8 | 8 | 0 | 0 |
 | Orders | 9 | 9 | 0 | 0 |
+| Reviews | 4 | 4 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **47** | **47** | **0** | **0** |
+| **TOTAL** | **52** | **52** | **0** | **0** |
 
 ---
 
@@ -153,7 +174,7 @@
 - Swagger documentation is available at `/swagger/`
 - ReDoc documentation is available at `/redoc/`
 - Media files are served at `/media/` in DEBUG mode
-- Apps installed but not exposed: `reviews`, `payments`, `shipping`, `notifications`
+- Apps installed but not exposed: `payments`, `shipping`, `notifications`
 
 ---
 
@@ -201,3 +222,18 @@ order.save()
 **Modified:** Login endpoint now sets 'role' cookie with user's group name.
 
 **Modified:** Product, category, and product image endpoints now require only verified user permissions instead of admin + verified.
+
+**Added:** Reviews system endpoints:
+- `GET /reviews/` (list user's reviews)
+- `POST /reviews/` (create review with validation)
+- `GET /reviews/<pk>/` (get specific review)
+- `DELETE /reviews/<pk>/` (delete own review)
+
+**Added:** Product reviews retrieval endpoint:
+- `POST /product-reviews/` (get all reviews for a specific product)
+
+**Notes on Reviews:**
+- Users can only review products they've purchased and received (order status: `delivered`)
+- One review per product per user enforced
+- Rating: 1-5 stars, content: text review
+- Product identified by name in POST request

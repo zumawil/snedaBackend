@@ -3,7 +3,7 @@ from django.urls import path
 from .views import ( SignupUser, CookieJWTLoginView, 
                     CookieTokenRefreshView, GetUsersView, 
                     VerifyOTPView, UserProfileView, LogoutUserView,
-                    ChangePasswordRequestView, ResetPasswordConfirmView, ResetPasswordView)
+                    ChangePasswordRequestView, ResetPasswordConfirmView, ResetPasswordView, GetUserSession)
 
 urlpatterns = [
     path("signup/", SignupUser.as_view(), name="signup"),
@@ -19,5 +19,6 @@ urlpatterns = [
     path('change-password/', ChangePasswordRequestView().as_view(), name="change_passsord"),
     # expects uid, token, new password and new password
     path('reset-password/', ResetPasswordView().as_view(), name="change_passsord"),
-    path('reset-password-confirm/', ResetPasswordConfirmView.as_view(), name='reset_password')
+    path('reset-password-confirm/', ResetPasswordConfirmView.as_view(), name='reset_password'),
+    path('session/', GetUserSession.as_view(), name='get_user_session'),
 ]

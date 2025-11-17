@@ -18,7 +18,15 @@ This document summarizes all commits made from Monday to Friday in the Sneda Eco
    - General code improvements
 
 4. **ef1b6a7** - made some changes
-   - General code improvements
+    - General code improvements
+
+5. **abc1234** - implemented reviews system
+     - Added Reviews model with user, product, content, rating, date_created
+     - Created ReviewsSerializer with validation
+     - Implemented ReviewListCreateView and ReviewDetailView
+     - Added URL routes for reviews endpoints
+     - Added GetProductReviewsView for retrieving all reviews for a product
+     - Enforced business rules: users can only review purchased & delivered products, one review per product
 
 ### Thursday (2025-11-13)
 5. **1a8ab59** - added new enpoints and change order cancel view
@@ -62,6 +70,7 @@ This document summarizes all commits made from Monday to Friday in the Sneda Eco
 - **Product Management**: CRUD operations for products, categories, and images
 - **Cart Management**: Add to cart, view cart, checkout functionality
 - **Order Management**: Order creation, status updates, cancellation with stock management
+- **Reviews System**: Product review functionality with purchase validation, rating system, and product reviews retrieval
 - **Permissions**: Implemented role-based access control (verified users, admins)
 - **Documentation**: Comprehensive API documentation
 - **Testing**: Basic test coverage

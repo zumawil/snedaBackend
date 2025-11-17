@@ -8,8 +8,7 @@ class ReviewsSerializer(serializers.ModelSerializer):
 
     user = serializers.CharField(source='user.email', read_only=True)
 
-    product = serializers.SlugRelatedField(
-        slug_field='name',
+    product = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all()
     )
 

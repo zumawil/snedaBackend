@@ -8,6 +8,8 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from rest_framework import generics
 from users.permissions import IsVerifiedUser, IsAdminUser
+from django.db import transaction
+from django.db.models import F
 # Create your views here.
 
 class CartView(APIView):
@@ -53,12 +55,15 @@ class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 from orders.models import Order, OrderItem
 
 class CheckoutView(APIView):
-
     permission_classes = [IsVerifiedUser]
 
+    @transaction.atomic()
     def post(self, request):
         try:
-            cart = Cart.objects.get(user=request.user)
+            cart = Cart.objects.select_related('user').prefetch_related(
+                'items__product'
+            ).get(user=request.user)
+            
             items = cart.items.all()
             
             if not items.exists():
@@ -66,32 +71,64 @@ class CheckoutView(APIView):
                     {"detail": "Cart is empty. Please add items before checkout."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            # create order for user doing checkout
-            order = Order.objects.create(user=request.user)
+            
+            # Validate all items before processing
             for item in items:
-                order_item = OrderItem.objects.create(
+                if item.product.stock <= 0:
+                    return Response(
+                        {"detail": f"{item.product.name} is no longer available"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                if item.product.stock < item.quantity:
+                    return Response(
+                        {"detail": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Create order
+            order = Order.objects.create(user=request.user)
+            
+            # Process items and update stock atomically
+            for item in items:
+                updated = Product.objects.filter(
+                    id=item.product.id,
+                    stock__gte=item.quantity # select product who have enough stock for quantity requested
+                ).update(stock=F('stock') - item.quantity)
+                
+                if updated == 0:
+                    raise Exception(f"Stock changed for {item.product.name}")
+                
+                OrderItem.objects.create(
                     order=order,
                     product=item.product,
                     quantity=item.quantity,
                     price=item.product.price
                 )
-                # Decrease product stock
-                item.product.stock -= item.quantity
-                item.product.save()
-
+            
+            # Calculate total
             amount = sum([item.price * item.quantity for item in order.items.all()])
             order.total_amount = amount
             order.save()
-                
-            # clear the cart after successful checkout
+            
+            # Clear cart
             cart.items.all().delete()
+            
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
         except Cart.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"detail": "Cart not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({'error':str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         
+             
 from products.models import Product
 
 class AddToCartView(APIView):
