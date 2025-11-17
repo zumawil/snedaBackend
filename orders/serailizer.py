@@ -17,8 +17,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     # user = UserSerializer(read_only=True)
     items =  OrderItemSerializer(many=True, read_only=True)
+    status = serializers.SerializerMethodField()
     class Meta:
         model = Order
         fields = ['id', 'status','total_amount', 'created_at', 'items']
         read_only_fields = ['total_amount']
+
+    def get_status(self, obj):
+        # expose the effective status derived from shipping when present
+        return obj.effective_status
 

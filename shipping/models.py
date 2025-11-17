@@ -1,6 +1,6 @@
 from django.db import models
 from orders.models import Order
-from payments.models import Payment
+# from payments.models import Payment
 
 # once payment is successful shipping is created
 class Shipping(models.Model):

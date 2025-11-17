@@ -156,13 +156,19 @@ class OrderCancelView(APIView):
     def post(self, request, pk):
         try:
             order = get_object_or_404(Order, pk=pk, user=request.user)
-            print(order.status)
+            # use effective_status (shipping-derived when present) to decide
+            current_status = getattr(order, 'effective_status', order.status)
             # can only cancel pending order
-            if order.status == "pending":
+            if current_status == "pending":
                 # Restore stock for each order item
                 for item in order.items.all():
                     item.product.stock += item.quantity
                     item.product.save()
+                # cancel any linked shipping record if present
+                if hasattr(order, 'shipping') and order.shipping:
+                    order.shipping.status = 'cancelled'
+                    order.shipping.save()
+                # keep the denormalized order.status in sync
                 order.status = 'cancelled'
                 order.save()
                 return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)

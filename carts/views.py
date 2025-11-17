@@ -10,6 +10,8 @@ from rest_framework import generics
 from users.permissions import IsVerifiedUser, IsAdminUser
 from django.db import transaction
 from django.db.models import F
+from shipping.models import Shipping
+from shipping.generate_shipping_number import generate_tracking_number
 # Create your views here.
 
 class CartView(APIView):
@@ -59,6 +61,8 @@ class CheckoutView(APIView):
 
     @transaction.atomic()
     def post(self, request):
+       
+
         try:
             cart = Cart.objects.select_related('user').prefetch_related(
                 'items__product'
@@ -110,6 +114,19 @@ class CheckoutView(APIView):
             amount = sum([item.price * item.quantity for item in order.items.all()])
             order.total_amount = amount
             order.save()
+
+            address = request.data.get('address', '')
+            pickup = request.data.get('pickup', False)
+            tracking_number = generate_tracking_number
+
+            # create shipping
+            shipping = Shipping.objects.create(
+                address=address,
+                pickup=pickup,
+                status=order.status,
+                tracking_number=tracking_number,
+                order=order
+            )
             
             # Clear cart
             cart.items.all().delete()
