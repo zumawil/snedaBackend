@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
+from shipping.models import Shipping
 from users.permissions import IsAdminUser, IsVerifiedUser
 
 # Create your views here.
@@ -128,16 +129,20 @@ class OrderUpdateStatusView(APIView):
                 )
             
             # Validate status choice
-            valid_statuses = ['pending', 'shipped', 'delivered']
+            valid_statuses = ['pending', 'shipped', 'delivered', 'cancelled']
             if new_status not in valid_statuses:
                 return Response(
                     {'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Update only the status field
-            order.status = new_status
-            order.save()
+            # Update shipping.status (Shipping is the source of truth for order state)
+            if hasattr(order, 'shipping') and order.shipping:
+                order.shipping.status = new_status
+                order.shipping.save()
+            else:
+                # create a shipping record with the new status (address may be empty)
+                Shipping.objects.create(order=order, status=new_status)
             
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -157,8 +162,7 @@ class OrderCancelView(APIView):
         try:
             order = get_object_or_404(Order, pk=pk, user=request.user)
             # use effective_status (shipping-derived when present) to decide
-            current_status = getattr(order, 'effective_status', order.status)
-            # can only cancel pending order
+            current_status = order.effective_status
             if current_status == "pending":
                 # Restore stock for each order item
                 for item in order.items.all():
@@ -168,11 +172,9 @@ class OrderCancelView(APIView):
                 if hasattr(order, 'shipping') and order.shipping:
                     order.shipping.status = 'cancelled'
                     order.shipping.save()
-                # keep the denormalized order.status in sync
-                order.status = 'cancelled'
-                order.save()
+                # nothing to write to Order model; shipping holds the state
                 return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)
-            elif order.status == 'cancelled':
+            elif current_status == 'cancelled':
                 return Response({'detail':'order already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
             else:
                 return Response({'detail':"order can't be cancelled"},  status=status.HTTP_400_BAD_REQUEST)

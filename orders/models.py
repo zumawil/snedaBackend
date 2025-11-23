@@ -4,11 +4,7 @@ from users.models import CustomUser as User
 # Create your models here.
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
-    status = models.CharField(max_length=50,
-                              choices=[('pending', 'Pending'),
-                                        ('shipped', 'Shipped'),
-                                        ('delivered', 'Delivered'),
-                                        ('cancelled', 'Cancelled')], default='pending')
+    # Order.status removed — Shipping model is the source of truth for shipment state.
     total_amount = models.DecimalField(default=0, max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)                
 
@@ -18,8 +14,8 @@ class Order(models.Model):
     def compute_status_from_shipping(self):
         """
         Derive an effective order status from the related Shipping record when present.
-        Falls back to the stored order.status when no shipping exists.
-        Shipping actually holds the status of the order once created.
+        If no Shipping exists, treat the order as 'pending'. Shipping holds the authoritative
+        state once it is created.
         """
         try:
             shipping = getattr(self, 'shipping', None)
@@ -30,7 +26,7 @@ class Order(models.Model):
             # use shipping.status as authoritative when available
             return shipping.status
 
-        return self.status
+        return 'pending'
 
     @property
     def effective_status(self):

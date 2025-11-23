@@ -90,12 +90,14 @@
 | `GET` | `/orders/order-items/<pk>/` | Get specific order item | ✅ | ✅ Working |
 | `PUT` | `/orders/order-items/<pk>/` | Update order item | ✅ | ✅ Working |
 | `DELETE` | `/orders/order-items/<pk>/` | Delete order item | ✅ | ✅ Working |
-| `PATCH` | `/orders/order/update-status/<pk>/` | Update order status (admin-only) | ✅ | ✅ Working |
+| `PATCH` | `/orders/order/update-status/<pk>/` | Update shipping status for an order (admin-only) | ✅ | ✅ Working |
 | `POST` | `/orders/order/cancel/<pk>/` | Cancel own order (user) | ✅ | ✅ Working |
 
 **Admin-only:** `PATCH /orders/order/update-status/<pk>/`
 
 **Notes:** Cancellation restricted to `pending` status only. Stock is restored upon cancellation.
+
+**Status source of truth:** Shipping is now the authoritative source of truth for order state. The `Order.status` DB field has been removed from the model; APIs expose a computed `status` derived from the linked `Shipping` record when present. Admin status updates now update the shipping record.
 
 ---
 
@@ -129,6 +131,7 @@
 
 ### Critical Issues:
 1. Payments: No payment provider integration or payment-state reconciliation yet. While the checkout creates Orders atomically, you must add payment tracking (PaymentIntent IDs, webhooks) and idempotency to be production-ready for paid checkouts.
+2. Database migration: `Order.status` was removed from the model. Before deploying to production, run migrations and (optionally) run a backfill migration to copy existing `Order.status` values into `Shipping` or an audit table if you need to preserve history.
 
 ### Code Quality Issues:
 - None found! ✅
@@ -136,7 +139,7 @@
 ### Missing Functionality:
 1. Payments endpoints and payment-provider integration (payments app exists but no URLs) — REQUIRED for real purchases
 2. Idempotency / CheckoutAttempt or Draft Order tracking to avoid duplicate orders on retries and to reconcile webhooks
-3. Shipping endpoints (shipping app exists but no URLs)
+3. Shipping endpoints (shipping app exists but no URLs) — shipping model exists; add CRUD and tracking endpoints
 4. Notifications endpoints (notifications app exists but no URLs)
 
 ---
@@ -146,6 +149,7 @@
 ### Medium Priority:
 1. **Payments**: Payment processing endpoints (`/payments/`) and PaymentIntent/webhook reconciliation
 2. **Idempotency & Draft Orders**: Add a `CheckoutAttempt` or draft `Order` model that stores idempotency keys, payment provider IDs, and cart snapshots to support retries and webhook reconciliation.
+3. **Shipping endpoints & migration**: Add shipping endpoints and implement a migration/backfill plan to preserve any required historical `Order.status` values before dropping the column in the database.
 
 ### Low Priority (if needed):
 2. **Shipping**: Shipping address and tracking endpoints (`/shipping/`)
@@ -237,3 +241,6 @@ order.save()
 - One review per product per user enforced
 - Rating: 1-5 stars, content: text review
 - Product identified by name in POST request
+
+**Recent change:**
+- `Order.status` removed from the `Order` model; shipping is now authoritative for order state. API responses still expose a `status` field computed from the linked `Shipping` record for compatibility.

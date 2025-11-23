@@ -24,7 +24,7 @@
 
 2) Checkout / Order hardening (NEW - immediate)
 - Add idempotency support for checkout requests (require `X-Idempotency-Key` header or accept a key in request body). Persist a CheckoutAttempt or tie the idempotency key to an Order to avoid duplicate orders on retries.
-- Ensure Order has a `status` field (DRAFT/PENDING/PAID/FAILED) and store payment provider IDs when integrating a gateway.
+- Shipping is now the source of truth for order state; ensure a Shipping record is created at checkout and used to represent status.
 - Create a draft Order or CheckoutAttempt before calling external payment APIs so webhooks can reconcile state.
 - Return appropriate 4xx errors for expected conditions (e.g., 409 Conflict for stock races) and log failures.
 
@@ -35,7 +35,7 @@
 **Updated:** `POST /orders/order/cancel/<pk>/`
 
 **Implemented:**
-1. ✅ Allow cancel only if `status == 'pending'`
+1. ✅ Allow cancel only if order is cancellable (evaluated from shipping/effective status, e.g., 'pending')
 2. ✅ Added `cancelled` status and stock restoration
 3. ✅ Tests and documentation updated
 
@@ -108,7 +108,8 @@
 
 ## 🛠️ Recommended Immediate Checklist (apply now)
 - [ ] Add idempotency key handling for `/checkout/` and persist keys with a CheckoutAttempt or Order
-- [ ] Ensure `Order.status` exists and set new orders to `PENDING` or `DRAFT` while awaiting payment
+- [ ] Ensure shipping record is created at checkout and treat Shipping as the source-of-truth for order state
+- [ ] Create and run a migration to drop `Order.status` from the database once code is fully migrated; include a backfill RunPython migration if you need to preserve historical status values.
 - [ ] Return 4xx errors for expected failures (e.g., 409 Conflict for stock races) and avoid 500 for expected conditions
 - [ ] Add unit/integration tests for concurrent checkout and stock validation
 - [ ] Add logging/metrics for checkout failures and stock update conflicts

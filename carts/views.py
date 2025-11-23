@@ -117,13 +117,13 @@ class CheckoutView(APIView):
 
             address = request.data.get('address', '')
             pickup = request.data.get('pickup', False)
-            tracking_number = generate_tracking_number
+            tracking_number = generate_tracking_number()
 
-            # create shipping
+            # create shipping (Shipping is the source of truth for order state)
             shipping = Shipping.objects.create(
                 address=address,
                 pickup=pickup,
-                status=order.status,
+                status='pending',
                 tracking_number=tracking_number,
                 order=order
             )
