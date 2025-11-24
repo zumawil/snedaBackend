@@ -14,6 +14,13 @@ from django.db.models import F
 from shipping.models import Shipping
 from shipping.generate_shipping_number import generate_tracking_number
 from .models import CheckoutAttempt
+import requests
+from dotenv import load_dotenv
+import os
+from payments.models import Payment
+from payments.serializers import PaymentSerializer
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 # Create your views here.
@@ -27,6 +34,33 @@ def create_shipping(order, address, pickup=False):
         address=address,
         pickup=pickup
     )
+
+from decimal import Decimal, ROUND_HALF_UP
+
+def to_pesewas(amount):
+    return int((Decimal(amount) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+
+def bill_user(amount):
+    amount = to_pesewas(amount)
+    print(amount)
+    PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
+    url = "https://api.paystack.co/transaction/initialize"
+
+    headers = {
+        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "email": "customer@example.com",
+        "amount": amount ,   # amount in pesewas (₵50.00 = 5000)
+        "currency": "GHS", # GHS works with Paystack
+        # "callback_url": "https://chatgpt.com/"
+    }
+
+    response = requests.post(url, json=data, headers=headers)
+
+    return response.json()
 
 
 class CartView(APIView):
@@ -81,11 +115,16 @@ class CheckoutView(APIView):
         idempotency_key = request.data.get('X-Idempotency-Key') or request.headers.get('X-Idempotency-Key')
         if not idempotency_key:
             return Response({"error": "Idempotency key required"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         attempt = CheckoutAttempt.objects.filter(key=idempotency_key).first()
         if attempt:
-            order = OrderSerializer(attempt.order)
-            return Response({"data":order.data,"detail": "Order already processed"}, status=status.HTTP_200_OK) 
+            order_serializer = OrderSerializer(attempt.order)
+            response_data = {"order": order_serializer.data, "detail": "Order already processed"}
+            # Include payment if exists
+            payment = Payment.objects.filter(order=attempt.order).first()
+            if payment:
+                response_data['payment'] = PaymentSerializer(payment).data
+            return Response(response_data, status=status.HTTP_200_OK)
 
         # continue with order
         try:
@@ -120,7 +159,7 @@ class CheckoutView(APIView):
             # Create order
             order = Order.objects.create(user=request.user)
             
-            # Process items and update stock atomically
+            # Process items and update stock atomically only when payment is made
             for item in items:
                 updated = Product.objects.filter(
                     id=item.product.id,
@@ -137,12 +176,25 @@ class CheckoutView(APIView):
                     price=item.product.price
                 )
             
-            # Calculate total
+            # # Calculate total
             amount = sum([item.price * item.quantity for item in order.items.all()])
+            data = bill_user(amount)
+
+            payment = None
+            if data.get('status') == True:
+                # Create payment record
+                payment = Payment.objects.create(
+                    order=order,
+                    amount=amount,
+                    method='card',  # Assuming card for Paystack
+                    status='pending',
+                    transaction_id=data['data']['reference']
+                )
+
             order.total_amount = amount
             order.save()
             logger.info(f"Order {order.id} created during checkout for user {request.user.email}")
- 
+
             # Clear cart
             cart.items.all().delete()
 
@@ -155,9 +207,16 @@ class CheckoutView(APIView):
             pickup = True if request.data.get('pickup', '').lower() == 'true' else False
 
             create_shipping(order, address, pickup)
-            
-            serializer = OrderSerializer(order)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            response_data = {
+                'order': OrderSerializer(order).data,
+            }
+
+            if payment:
+                response_data['payment'] = PaymentSerializer(payment).data
+                response_data['payment_url'] = data['data']['authorization_url']
+
+            return Response(response_data, status=status.HTTP_201_CREATED)
             
         except Cart.DoesNotExist:
             return Response(
