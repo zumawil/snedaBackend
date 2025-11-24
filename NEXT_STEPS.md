@@ -7,9 +7,9 @@
 
 ## 📋 Quick Summary
 
-- ✅ **51 endpoints** currently working
+- ✅ **53 endpoints** currently working
 - ✅ **0 critical bugs** found
-- 🎯 **3 feature areas** remaining (payments, shipping, notifications)
+- 🎯 **3 feature areas** remaining (payments, shipping (partially), notifications)
 
 ---
 
@@ -69,8 +69,9 @@
 
 ## 🟢 Low Priority
 
-### 6. Shipping Management
-- Addresses CRUD and tracking lookups
+### 6. Shipping Management (Partially Implemented)
+- ✅ Tracking endpoint: `GET /shipping/status/<order_id>/`
+- Remaining: Addresses CRUD and additional tracking features
 
 ### 7. Notifications System
 - List, mark read, mark all read, delete

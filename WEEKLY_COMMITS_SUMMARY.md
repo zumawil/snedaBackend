@@ -17,6 +17,16 @@ This document summarizes all commits made from Monday to Friday in the Sneda Eco
 ### Tuesday (2025-11-18)
 - No commits recorded
 
+### Monday (2025-11-24)
+1. **debug-fix-1** - Fixed ShippingSerializer and tracking number generation
+   - Changed ShippingSerializer from Serializer to ModelSerializer to properly serialize shipping data
+   - Added order_id field to serializer response
+   - Modified generate_tracking_number to ensure database uniqueness and prevent duplicates
+
+2. **debug-fix-2** - Added shipping status endpoint
+   - Implemented GET /shipping/status/<order_id>/ endpoint to retrieve shipping details
+   - Updated documentation to reflect new endpoint and fixes
+
 ### Monday (2025-11-17)
 1. **af5affc** - made soms changes
    - General code improvements
@@ -90,6 +100,7 @@ This document summarizes all commits made from Monday to Friday in the Sneda Eco
 - **Product Management**: CRUD operations for products, categories, and images
 - **Cart Management**: Add to cart, view cart, checkout functionality
 - **Order Management**: Order creation, status updates, cancellation with stock management
+- **Shipping Management**: Shipping status tracking endpoint with unique tracking number generation
 - **Reviews System**: Product review functionality with purchase validation, rating system, and product reviews retrieval
 - **Permissions**: Implemented role-based access control (verified users, admins)
 - **Documentation**: Comprehensive API documentation

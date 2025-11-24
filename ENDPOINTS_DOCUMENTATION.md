@@ -93,6 +93,12 @@
 | `PATCH` | `/orders/order/update-status/<pk>/` | Update shipping status for an order (admin-only) | ✅ | ✅ Working |
 | `POST` | `/orders/order/cancel/<pk>/` | Cancel own order (user) | ✅ | ✅ Working |
 
+## 🚚 Shipping (`/shipping/`)
+
+| Method | Endpoint | Description | Auth Required | Status |
+|--------|----------|-------------|---------------|--------|
+| `GET` | `/shipping/status/<order_id>/` | Get shipping status and details for an order | ✅ | ✅ Working |
+
 **Admin-only:** `PATCH /orders/order/update-status/<pk>/`
 
 **Notes:** Cancellation restricted to `pending` status only. Stock is restored upon cancellation.
@@ -165,9 +171,10 @@
 | Products | 16 | 16 | 0 | 0 |
 | Cart | 8 | 8 | 0 | 0 |
 | Orders | 9 | 9 | 0 | 0 |
+| Shipping | 1 | 1 | 0 | 0 |
 | Reviews | 4 | 4 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **52** | **52** | **0** | **0** |
+| **TOTAL** | **53** | **53** | **0** | **0** |
 
 ---
 
@@ -184,6 +191,14 @@
 
 ## ✅ Recent Fixes
 
+**Fixed:** `shipping/serializers.py` - `ShippingSerializer`
+
+Changed from `serializers.Serializer` to `serializers.ModelSerializer` to properly serialize model fields. Added `order_id` as a `SerializerMethodField` to include the order's ID in the response.
+
+**Fixed:** `shipping/generate_shipping_number.py` - `generate_tracking_number()`
+
+Added database uniqueness check to prevent duplicate tracking numbers, ensuring reliable shipment tracking.
+
 **Fixed:** `carts/views.py` - `CheckoutView.post()`
 
 The `total_amount` is now correctly calculated when creating an order:
@@ -193,6 +208,9 @@ total_amount = sum(item.get_total_price() for item in order.items.all())
 order.total_amount = total_amount
 order.save()
 ```
+
+**Added:** Shipping status endpoint:
+- `GET /shipping/status/<order_id>/` (get shipping details for an order)
 
 **Added:** Admin-only order status update endpoint:
 - `PATCH /orders/order/update-status/<pk>/` (requires admin)
