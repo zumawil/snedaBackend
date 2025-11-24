@@ -1,6 +1,7 @@
 from django.db import models
 from users.models import CustomUser as User
 from products.models import Product
+from orders.models import Order
 # Create your models here.
 
 class Cart(models.Model):
@@ -27,4 +28,8 @@ class CartItem(models.Model):
     def get_total_price(self):
         return self.quantity * self.product.price
 
-
+# Idempotency table  to prevent creating same order two times
+class CheckoutAttempt(models.Model):
+    key = models.CharField(max_length=255, unique=True)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

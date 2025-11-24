@@ -1,3 +1,4 @@
+import logging
 from django.shortcuts import render
 from .serailizer import OrderItemSerializer, OrderSerializer
 from rest_framework.response import Response
@@ -8,6 +9,8 @@ from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
 from shipping.models import Shipping
 from users.permissions import IsAdminUser, IsVerifiedUser
+
+logger = logging.getLogger(__name__)
 
 # Create your views here.
 
@@ -138,11 +141,16 @@ class OrderUpdateStatusView(APIView):
             
             # Update shipping.status (Shipping is the source of truth for order state)
             if hasattr(order, 'shipping') and order.shipping:
+                logger.info(f"Updating shipping status for order {order.id} to {new_status}")
                 order.shipping.status = new_status
                 order.shipping.save()
+                logger.info(f"Shipping status updated for order {order.id}")
             else:
-                # create a shipping record with the new status (address may be empty)
-                Shipping.objects.create(order=order, status=new_status)
+                logger.warning(f"No shipping record found for order {order.id}")
+                return Response(
+                    {'error':"no shipping related to this order was found"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -170,8 +178,10 @@ class OrderCancelView(APIView):
                     item.product.save()
                 # cancel any linked shipping record if present
                 if hasattr(order, 'shipping') and order.shipping:
+                    logger.info(f"Cancelling shipping for order {order.id}")
                     order.shipping.status = 'cancelled'
                     order.shipping.save()
+                    logger.info(f"Shipping cancelled for order {order.id}")
                 # nothing to write to Order model; shipping holds the state
                 return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)
             elif current_status == 'cancelled':

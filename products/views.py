@@ -95,7 +95,7 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class GetProductReviewsView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [IsVerifiedUser]
 
     def post(self, request):
         product_id = request.data.get('product')

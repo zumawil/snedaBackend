@@ -1,3 +1,4 @@
+import logging
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -12,7 +13,21 @@ from django.db import transaction
 from django.db.models import F
 from shipping.models import Shipping
 from shipping.generate_shipping_number import generate_tracking_number
+from .models import CheckoutAttempt
+
+logger = logging.getLogger(__name__)
 # Create your views here.
+
+# helper functions
+def create_shipping(order, address, pickup=False):
+    Shipping.objects.create(
+        order=order,
+        status="pending",
+        tracking_number=generate_tracking_number(),
+        address=address,
+        pickup=pickup
+    )
+
 
 class CartView(APIView):
 
@@ -61,8 +76,18 @@ class CheckoutView(APIView):
 
     @transaction.atomic()
     def post(self, request):
-       
 
+        # idempotency_key id generated from the frontend
+        idempotency_key = request.data.get('X-Idempotency-Key') or request.headers.get('X-Idempotency-Key')
+        if not idempotency_key:
+            return Response({"error": "Idempotency key required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        attempt = CheckoutAttempt.objects.filter(key=idempotency_key).first()
+        if attempt:
+            order = OrderSerializer(attempt.order)
+            return Response({"data":order.data,"detail": "Order already processed"}, status=status.HTTP_200_OK) 
+
+        # continue with order
         try:
             cart = Cart.objects.select_related('user').prefetch_related(
                 'items__product'
@@ -116,22 +141,20 @@ class CheckoutView(APIView):
             amount = sum([item.price * item.quantity for item in order.items.all()])
             order.total_amount = amount
             order.save()
-
-            address = request.data.get('address', '')
-            pickup = request.data.get('pickup', False)
-            tracking_number = generate_tracking_number()
-
-            # create shipping (Shipping is the source of truth for order state)
-            # shipping = Shipping.objects.create(
-            #     address=address,
-            #     pickup=pickup,
-            #     status='pending',
-            #     tracking_number=tracking_number,
-            #     order=order
-            # )
-            
+            logger.info(f"Order {order.id} created during checkout for user {request.user.email}")
+ 
             # Clear cart
             cart.items.all().delete()
+
+            CheckoutAttempt.objects.create(
+                key = idempotency_key,
+                order = order,
+            )
+
+            address = request.data.get('address')
+            pickup = True if request.data.get('pickup', '').lower() == 'true' else False
+
+            create_shipping(order, address, pickup)
             
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
