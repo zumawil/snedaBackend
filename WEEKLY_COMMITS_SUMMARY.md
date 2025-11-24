@@ -1,118 +1,30 @@
-# Weekly Commits Summary (Monday to Friday)
+# Weekly Commits Summary (This Week: 2025-11-23 to 2025-11-24)
 
-This document summarizes all commits made from Monday to Friday in the Sneda Ecommerce API project.
+This document summarizes all commits made this week in the Sneda Ecommerce API project.
 
 ## Commit History (Organized by Day)
 
-### Friday (2025-11-21)
-1. **ed872e2** - updated order model
-   - Updated the order model
-
-### Thursday (2025-11-20)
-- No commits recorded
-
-### Wednesday (2025-11-19)
-- No commits recorded
-
-### Tuesday (2025-11-18)
-- No commits recorded
-
 ### Monday (2025-11-24)
-1. **debug-fix-1** - Fixed ShippingSerializer and tracking number generation
+1. **9b63415** - updated md files
+   - Updated NEXT_STEPS.md to group pending tasks at the top and completed tasks at the bottom
+   - Adjusted formatting for Shipping Management section
+
+2. **adacc7d** - Fix ShippingSerializer, add shipping status endpoint, and ensure unique tracking numbers
    - Changed ShippingSerializer from Serializer to ModelSerializer to properly serialize shipping data
    - Added order_id field to serializer response
    - Modified generate_tracking_number to ensure database uniqueness and prevent duplicates
-
-2. **debug-fix-2** - Added shipping status endpoint
    - Implemented GET /shipping/status/<order_id>/ endpoint to retrieve shipping details
    - Updated documentation to reflect new endpoint and fixes
 
-### Monday (2025-11-17)
-1. **af5affc** - made soms changes
-   - General code improvements
 
-2. **7264c79** - made some changed to checkout
-   - Modified checkout functionality
+## Summary of Work Completed This Week
 
-### Friday (2025-11-14)
-1. **e2e757e** - updated the permissions and updated docs, and test
-   - Added missing permission classes to user views
-   - Updated documentation
-   - Ran tests
+- **Shipping Management Enhancements**: Fixed ShippingSerializer, added shipping status endpoint with unique tracking number generation
+- **Documentation Updates**: Updated NEXT_STEPS.md to reorganize pending and completed tasks
+- **Order Model Updates**: Minor updates to the order model
 
-2. **3b35d29** - fixed cart views and added a new password token generator class
-   - Fixed cart-related views
-   - Implemented password token generator for reset functionality
+## Key Features Implemented This Week
 
-3. **26feb71** - made some changes
-   - General code improvements
-
-4. **ef1b6a7** - made some changes
-    - General code improvements
-
-5. **abc1234** - implemented reviews system
-     - Added Reviews model with user, product, content, rating, date_created
-     - Created ReviewsSerializer with validation
-     - Implemented ReviewListCreateView and ReviewDetailView
-     - Added URL routes for reviews endpoints
-     - Added GetProductReviewsView for retrieving all reviews for a product
-     - Enforced business rules: users can only review purchased & delivered products, one review per product
-
-### Thursday (2025-11-13)
-5. **1a8ab59** - added new enpoints and change order cancel view
-   - Added new API endpoints
-   - Modified order cancellation logic
-
-6. **cb0be40** - added password rest edpints
-   - Implemented password reset endpoints
-
-7. **92c88a7** - minor change
-   - Small fixes or improvements
-
-8. **1aa93ec** - added category enpoints and annotaion for query optimization
-   - Added category management endpoints
-   - Added query annotations for performance optimization
-
-### Wednesday (2025-11-12)
-9. **542c827** - added user enpoinsta and chnaged user model
-   - Added user-related endpoints
-   - Modified user model
-
-10. **3d88227** - Fix API endpoints and add comprehensive documentation
-    - Fixed existing API endpoints
-    - Added detailed documentation
-
-11. **f877d69** - Refactor cart functionality: remove unused cart item creation endpoint, improve checkout to clear cart and return ord r data
-    - Refactored cart views
-    - Removed unused endpoints
-    - Improved checkout process
-
-### Tuesday (2025-11-11)
-12. **224e302** - Implement core ecommerce API endpoints for users, products, carts, and orders
-    - Initial implementation of core API endpoints
-
-### Monday (2025-11-10)
-- No commits recorded
-
-## Summary of Work Completed
-
-- **Authentication & User Management**: Complete user registration, login, profile management, password reset
-- **Product Management**: CRUD operations for products, categories, and images
-- **Cart Management**: Add to cart, view cart, checkout functionality
-- **Order Management**: Order creation, status updates, cancellation with stock management
-- **Shipping Management**: Shipping status tracking endpoint with unique tracking number generation
-- **Reviews System**: Product review functionality with purchase validation, rating system, and product reviews retrieval
-- **Permissions**: Implemented role-based access control (verified users, admins)
-- **Documentation**: Comprehensive API documentation
-- **Testing**: Basic test coverage
-
-## Key Features Implemented
-
-- JWT-based authentication with cookie storage
-- Email verification for user registration
-- Password reset functionality
-- Product inventory management with stock tracking
-- Order lifecycle management (pending → shipped → delivered, with cancellation)
-- Admin-only order status updates
-- Query optimization for category listings
-- Comprehensive error handling and validation
+- Shipping status tracking endpoint with proper serialization
+- Unique tracking number generation to prevent duplicates
+- Reorganized project next steps documentation
