@@ -4,6 +4,26 @@ This document summarizes all commits made from Monday to Friday in the Sneda Eco
 
 ## Commit History (Organized by Day)
 
+### Friday (2025-11-21)
+1. **ed872e2** - updated order model
+   - Updated the order model
+
+### Thursday (2025-11-20)
+- No commits recorded
+
+### Wednesday (2025-11-19)
+- No commits recorded
+
+### Tuesday (2025-11-18)
+- No commits recorded
+
+### Monday (2025-11-17)
+1. **af5affc** - made soms changes
+   - General code improvements
+
+2. **7264c79** - made some changed to checkout
+   - Modified checkout functionality
+
 ### Friday (2025-11-14)
 1. **e2e757e** - updated the permissions and updated docs, and test
    - Added missing permission classes to user views

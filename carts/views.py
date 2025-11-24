@@ -69,7 +69,7 @@ class CheckoutView(APIView):
             ).get(user=request.user)
             
             items = cart.items.all()
-            
+        
             if not items.exists():
                 return Response(
                     {"detail": "Cart is empty. Please add items before checkout."},
@@ -78,12 +78,14 @@ class CheckoutView(APIView):
             
             # Validate all items before processing
             for item in items:
+                # warn if a product in the cart is out of stock
                 if item.product.stock <= 0:
                     return Response(
                         {"detail": f"{item.product.name} is no longer available"},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
+                # warn if requested quantity exceeds available stock
                 if item.product.stock < item.quantity:
                     return Response(
                         {"detail": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
@@ -120,13 +122,13 @@ class CheckoutView(APIView):
             tracking_number = generate_tracking_number()
 
             # create shipping (Shipping is the source of truth for order state)
-            shipping = Shipping.objects.create(
-                address=address,
-                pickup=pickup,
-                status='pending',
-                tracking_number=tracking_number,
-                order=order
-            )
+            # shipping = Shipping.objects.create(
+            #     address=address,
+            #     pickup=pickup,
+            #     status='pending',
+            #     tracking_number=tracking_number,
+            #     order=order
+            # )
             
             # Clear cart
             cart.items.all().delete()
