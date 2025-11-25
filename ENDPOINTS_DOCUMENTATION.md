@@ -282,3 +282,35 @@ order.save()
 - Added Paystack payment integration with callback handling for payment verification.
 - Fixed checkout flow to properly calculate order amount before payment initialization.
 - Implemented idempotency in checkout using CheckoutAttempt model.
+
+---
+
+## 🔧 Bug Fixes (2025-11-25)
+
+**Fixed:** `payments/views.py` - `verify_payment()` function
+
+- **Bug**: `response_data(response_data.get('status'))` was calling a dict as a function
+- **Fix**: Changed to proper status assignment with `payment.status = 'failed'`
+- **Added**: Comprehensive error handling with try/except blocks
+- **Added**: Validation for missing reference and Paystack secret key
+- **Added**: Network error handling with `requests.RequestException`
+- **Added**: Return tuple `(success, message)` for better error communication
+
+**Fixed:** `payments/views.py` - `PaymentCallback` class
+
+- **Added**: Reference parameter validation before calling `verify_payment()`
+- **Improved**: Response messages now include detailed error information
+
+**Fixed:** `payments/urls.py` - URL name typo
+
+- **Changed**: `name='paymenet-callback'` → `name='payment-callback'`
+
+**Fixed:** `carts/views.py` - `bill_user()` function
+
+- **Changed**: Now accepts `email` parameter instead of hardcoded `"customer@example.com"`
+- **Updated**: Checkout view passes `request.user.email` to the function
+
+**Fixed:** `carts/views.py` - `create_shipping()` function
+
+- **Added**: Now returns the generated `tracking_number`
+- **Added**: Logging statement in checkout view for tracking number

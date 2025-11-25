@@ -27,20 +27,46 @@ logger = logging.getLogger(__name__)
 
 # helper functions
 def create_shipping(order, address, pickup=False):
+    """
+    Create a shipping record for an order.
+    
+    Args:
+        order: The Order instance
+        address: Shipping address string
+        pickup: Boolean indicating if it's a pickup order
+        
+    Returns:
+        str: The generated tracking number
+    """
+    tracking_number = generate_tracking_number()
     Shipping.objects.create(
         order=order,
         status="pending",
-        tracking_number=generate_tracking_number(),
+        tracking_number=tracking_number,
         address=address,
         pickup=pickup
     )
+    return tracking_number
+
 
 from decimal import Decimal, ROUND_HALF_UP
 
 def to_pesewas(amount):
+    """Convert amount to pesewas (smallest currency unit for GHS)."""
     return int((Decimal(amount) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
-def bill_user(amount):
+
+def bill_user(amount, email):
+    """
+    Initialize a Paystack payment transaction.
+    
+    Args:
+        amount: The amount to charge (in GHS)
+        email: Customer's email address
+        
+    Returns:
+        dict: Paystack API response
+    """
     amount = to_pesewas(amount)
     
     PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
@@ -52,10 +78,9 @@ def bill_user(amount):
     }
 
     data = {
-        "email": "customer@example.com",
-        "amount": amount ,   # amount in pesewas (₵50.00 = 5000)
-        "currency": "GHS", # GHS works with Paystack
-        # tracking number for the shipping info bind with the order to track order
+        "email": email,
+        "amount": amount,   # amount in pesewas (₵50.00 = 5000)
+        "currency": "GHS",  # GHS works with Paystack
         "callback_url": f"{os.getenv('APP_URL')}payments/callback/"
     }
 
@@ -176,11 +201,12 @@ class CheckoutView(APIView):
             address = request.data.get('address')
             pickup = True if request.data.get('pickup', '').lower() == 'true' else False
 
-            # get tracking number which is unique for the shipping
+            # Create shipping record and get tracking number
             tracking_number = create_shipping(order, address, pickup)
+            logger.info(f"Shipping created with tracking number: {tracking_number}")
 
-            # bill user
-            data = bill_user(amount)
+            # Bill user using their email
+            data = bill_user(amount, request.user.email)
 
             payment = None
             if data.get('status') == True:

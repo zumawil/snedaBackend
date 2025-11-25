@@ -75,7 +75,22 @@ class PaymentView(APIView):
 
 
 def verify_payment(reference):
+    """
+    Verify a Paystack payment transaction.
+    
+    Args:
+        reference: The Paystack transaction reference
+        
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    if not reference:
+        return False, "Reference is required"
+    
     PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
+    
+    if not PAYSTACK_SECRET_KEY:
+        return False, "Paystack secret key not configured"
 
     verify_url = f"https://api.paystack.co/transaction/verify/{reference}"
     headers = {
@@ -83,27 +98,58 @@ def verify_payment(reference):
         "Content-Type": "application/json"
     }
 
-    response = requests.get(verify_url, headers=headers)
-    response_data = response.json()
-    
-    if response_data.get('status') and response_data.get('data', {}).get('status') == 'success':
-        payment = Payment.objects.get(paystack_reference=reference)
-        payment.transaction_id = response_data.get("data").get('id')
-        payment.status = "completed"
+    try:
+        response = requests.get(verify_url, headers=headers)
+        response_data = response.json()
+        
+        # Get payment record
+        try:
+            payment = Payment.objects.get(paystack_reference=reference)
+        except Payment.DoesNotExist:
+            return False, "Payment record not found"
+        
+        if response_data.get('status') and response_data.get('data', {}).get('status') == 'success':
+            payment.transaction_id = response_data.get("data", {}).get('id')
+            payment.status = "completed"
+            payment.save()
+            return True, "Payment verified successfully"
+        
+        # Payment failed or has other status
+        paystack_status = response_data.get('data', {}).get('status', 'failed')
+        if paystack_status == 'abandoned':
+            payment.status = 'abandoned'
+        else:
+            payment.status = 'failed'
         payment.save()
-        return True
-    payment = Payment.objects.get(paystack_reference=reference)
-    payment.status = response_data(response_data.get('status'))
-    return False
+        return False, f"Payment verification failed: {paystack_status}"
+        
+    except requests.RequestException as e:
+        return False, f"Network error while verifying payment: {str(e)}"
+    except Exception as e:
+        return False, f"Error verifying payment: {str(e)}"
+
 
 class PaymentCallback(APIView):
+    """
+    Handle Paystack payment callback.
+    This endpoint is called by Paystack after payment completion.
+    """
 
     def get(self, request):
         reference = request.query_params.get('reference')
-        if verify_payment(reference):
-            return Response({'detail': 'Payment verified and completed'}, status=status.HTTP_200_OK)
+        
+        if not reference:
+            return Response(
+                {'error': 'Reference parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        success, message = verify_payment(reference)
+        
+        if success:
+            return Response({'detail': message}, status=status.HTTP_200_OK)
         else:
-            return Response({'error': 'Payment verification failed'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
 
         # updated = Product.objects.filter(
                 #     id=item.product.id,
