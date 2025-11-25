@@ -42,7 +42,7 @@ def to_pesewas(amount):
 
 def bill_user(amount):
     amount = to_pesewas(amount)
-    print(amount)
+    
     PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
     url = "https://api.paystack.co/transaction/initialize"
 
@@ -55,7 +55,8 @@ def bill_user(amount):
         "email": "customer@example.com",
         "amount": amount ,   # amount in pesewas (₵50.00 = 5000)
         "currency": "GHS", # GHS works with Paystack
-        # "callback_url": "https://chatgpt.com/"
+        # tracking number for the shipping info bind with the order to track order
+        "callback_url": f"{os.getenv('APP_URL')}payments/callback/"
     }
 
     response = requests.post(url, json=data, headers=headers)
@@ -117,6 +118,7 @@ class CheckoutView(APIView):
             return Response({"error": "Idempotency key required"}, status=status.HTTP_400_BAD_REQUEST)
 
         attempt = CheckoutAttempt.objects.filter(key=idempotency_key).first()
+        # check if there was an order attempt
         if attempt:
             order_serializer = OrderSerializer(attempt.order)
             response_data = {"order": order_serializer.data, "detail": "Order already processed"}
@@ -141,43 +143,43 @@ class CheckoutView(APIView):
                 )
             
             # Validate all items before processing
-            for item in items:
-                # warn if a product in the cart is out of stock
-                if item.product.stock <= 0:
-                    return Response(
-                        {"detail": f"{item.product.name} is no longer available"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+            # for item in items:
+            #     # warn if a product in the cart is out of stock
+            #     if item.product.stock <= 0:
+            #         return Response(
+            #             {"detail": f"{item.product.name} is no longer available"},
+            #             status=status.HTTP_400_BAD_REQUEST
+            #         )
                 
-                # warn if requested quantity exceeds available stock
-                if item.product.stock < item.quantity:
-                    return Response(
-                        {"detail": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+            #     # warn if requested quantity exceeds available stock
+            #     if item.product.stock < item.quantity:
+            #         return Response(
+            #             {"detail": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
+            #             status=status.HTTP_400_BAD_REQUEST
+            #         )
             
             # Create order
             order = Order.objects.create(user=request.user)
-            
-            # Process items and update stock atomically only when payment is made
+
             for item in items:
-                updated = Product.objects.filter(
-                    id=item.product.id,
-                    stock__gte=item.quantity # select product who have enough stock for quantity requested
-                ).update(stock=F('stock') - item.quantity)
-                
-                if updated == 0:
-                    raise Exception(f"Stock changed for {item.product.name}")
-                
+            
                 OrderItem.objects.create(
                     order=order,
                     product=item.product,
                     quantity=item.quantity,
                     price=item.product.price
                 )
-            
-            # # Calculate total
+
+            # Calculate total
             amount = sum([item.price * item.quantity for item in order.items.all()])
+
+            address = request.data.get('address')
+            pickup = True if request.data.get('pickup', '').lower() == 'true' else False
+
+            # get tracking number which is unique for the shipping
+            tracking_number = create_shipping(order, address, pickup)
+
+            # bill user
             data = bill_user(amount)
 
             payment = None
@@ -188,7 +190,7 @@ class CheckoutView(APIView):
                     amount=amount,
                     method='card',  # Assuming card for Paystack
                     status='pending',
-                    transaction_id=data['data']['reference']
+                    paystack_reference=data['data']['reference']
                 )
 
             order.total_amount = amount
@@ -202,11 +204,6 @@ class CheckoutView(APIView):
                 key = idempotency_key,
                 order = order,
             )
-
-            address = request.data.get('address')
-            pickup = True if request.data.get('pickup', '').lower() == 'true' else False
-
-            create_shipping(order, address, pickup)
 
             response_data = {
                 'order': OrderSerializer(order).data,

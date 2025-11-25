@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2025-11-25
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 
 ---
@@ -107,6 +107,22 @@
 
 ---
 
+## 💳 Payments (`/payments/`)
+
+| Method | Endpoint | Description | Auth Required | Status |
+|--------|----------|-------------|---------------|--------|
+| `GET` | `/payments/` | List all payments for user | ✅ | ✅ Working |
+| `GET` | `/payments/<pk>/` | Get specific payment details | ✅ | ✅ Working |
+| `POST` | `/payments/` | Initiate a new payment for an order | ✅ | ✅ Working |
+| `GET` | `/payments/callback/` | Handle Paystack payment callback/webhook | ❌ | ✅ Working |
+
+**Notes:**
+- Payment initiation uses Paystack API with callback URL set to API backend
+- Callback endpoint verifies payment status and updates payment record
+- Checkout now includes payment initialization with idempotency support
+
+---
+
 ## ⭐ Reviews (`/`)
 
 | Method | Endpoint | Description | Auth Required | Status |
@@ -136,15 +152,15 @@
 ## 🔍 Issues Summary
 
 ### Critical Issues:
-1. Payments: No payment provider integration or payment-state reconciliation yet. While the checkout creates Orders atomically, you must add payment tracking (PaymentIntent IDs, webhooks) and idempotency to be production-ready for paid checkouts.
+1. Payments: Partial payment provider integration implemented with Paystack. Payment initiation and callback handling are working, but full webhook reconciliation and error handling may need refinement for production.
 2. Database migration: `Order.status` was removed from the model. Before deploying to production, run migrations and (optionally) run a backfill migration to copy existing `Order.status` values into `Shipping` or an audit table if you need to preserve history.
 
 ### Code Quality Issues:
 - None found! ✅
 
 ### Missing Functionality:
-1. Payments endpoints and payment-provider integration (payments app exists but no URLs) — REQUIRED for real purchases
-2. Idempotency / CheckoutAttempt or Draft Order tracking to avoid duplicate orders on retries and to reconcile webhooks
+1. Payments: Full webhook reconciliation and advanced error handling for production
+2. Idempotency: CheckoutAttempt tracking is implemented, but may need refinement
 3. Shipping endpoints (shipping app exists but no URLs) — shipping model exists; add CRUD and tracking endpoints
 4. Notifications endpoints (notifications app exists but no URLs)
 
@@ -172,9 +188,10 @@
 | Cart | 8 | 8 | 0 | 0 |
 | Orders | 9 | 9 | 0 | 0 |
 | Shipping | 1 | 1 | 0 | 0 |
+| Payments | 4 | 4 | 0 | 0 |
 | Reviews | 4 | 4 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **53** | **53** | **0** | **0** |
+| **TOTAL** | **57** | **57** | **0** | **0** |
 
 ---
 
@@ -260,5 +277,8 @@ order.save()
 - Rating: 1-5 stars, content: text review
 - Product identified by name in POST request
 
-**Recent change:**
+**Recent changes:**
 - `Order.status` removed from the `Order` model; shipping is now authoritative for order state. API responses still expose a `status` field computed from the linked `Shipping` record for compatibility.
+- Added Paystack payment integration with callback handling for payment verification.
+- Fixed checkout flow to properly calculate order amount before payment initialization.
+- Implemented idempotency in checkout using CheckoutAttempt model.

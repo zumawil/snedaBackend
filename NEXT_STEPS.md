@@ -1,35 +1,36 @@
 # 🚀 Next Steps - Sneda Ecommerce API
 
-**Last Updated:** 2025-11-24
-**Status:** Core endpoints working ✅ | Checkout creates Orders atomically but payment integration is pending
+**Last Updated:** 2025-11-25
+**Status:** Core endpoints working ✅ | Payment integration partially implemented with Paystack
 
 ---
 
 ## 📋 Quick Summary
 
-- ✅ **53 endpoints** currently working
+- ✅ **57 endpoints** currently working
 - ✅ **0 critical bugs** found
-- 🎯 **3 feature areas** remaining (payments, shipping (partially), notifications)
+- 🎯 **2 feature areas** remaining (shipping (partially), notifications)
 
 ---
 
 ## ⏭️ Pending Tasks (Immediate Priority)
 
 ### 1. Checkout / Order Hardening (Immediate)
-- Add idempotency support for checkout requests (require `X-Idempotency-Key` header or accept a key in request body). Persist a CheckoutAttempt or tie the idempotency key to an Order to avoid duplicate orders on retries.
-- Shipping is now the source of truth for order state; ensure a Shipping record is created at checkout and used to represent status.
+- ✅ Idempotency support implemented with CheckoutAttempt model
+- ✅ Shipping record creation at checkout completed
 - Create a draft Order or CheckoutAttempt before calling external payment APIs so webhooks can reconcile state.
 - Return appropriate 4xx errors for expected conditions (e.g., 409 Conflict for stock races) and log failures.
 
 ### 2. Payments Integration (Medium Priority)
-**Endpoints to create:**
-- `POST /payments/`, `GET /payments/<pk>/`, `POST /payments/<pk>/verify/`
+**Endpoints implemented:**
+- ✅ `GET /payments/`, `GET /payments/<pk>/`, `POST /payments/`
+- ✅ `GET /payments/callback/` for webhook handling
 
-**Implementation steps:**
-1. Choose gateway (Stripe/PayPal)
-2. Payment model + status flow
-3. Webhook verification; update order status
-4. Error handling + docs
+**Implementation completed:**
+1. ✅ Paystack gateway selected and integrated
+2. ✅ Payment model with status flow
+3. ✅ Webhook verification and payment status updates
+4. ✅ Basic error handling and callback URL set to API backend
 
 ### 3. Shipping Management (Low Priority - Partially Implemented)
 ✅ Tracking endpoint: GET /shipping/status/<order_id>/
@@ -41,8 +42,8 @@ Remaining: Addresses CRUD and additional tracking features
 ---
 
 ## 🛠️ Recommended Immediate Checklist (Pending)
-- [ ] Add idempotency key handling for `/checkout/` and persist keys with a CheckoutAttempt or Order
-- [ ] Ensure shipping record is created at checkout and treat Shipping as the source-of-truth for order state
+- [x] Add idempotency key handling for `/checkout/` and persist keys with a CheckoutAttempt or Order
+- [x] Ensure shipping record is created at checkout and treat Shipping as the source-of-truth for order state
 - [ ] Create and run a migration to drop `Order.status` from the database once code is fully migrated; include a backfill RunPython migration if you need to preserve historical status values.
 - [ ] Return 4xx errors for expected failures (e.g., 409 Conflict for stock races) and avoid 500 for expected conditions
 - [ ] Add unit/integration tests for concurrent checkout and stock validation
@@ -94,12 +95,15 @@ Remaining: Addresses CRUD and additional tracking features
 - Password Management — `POST /users/change-password/`, `POST /users/reset-password/`, `POST /users/reset-password/confirm/`
 - Product Image Management — `POST /product-images/`, `GET /product-images/<pk>/`, `DELETE /product-images/<pk>/`
 - Reviews System — `GET/POST /reviews/`, `GET/DELETE /reviews/<pk>/` (with purchase validation)
+- Payments Integration — `GET/POST /payments/`, `GET /payments/<pk>/`, `GET /payments/callback/` (Paystack with callback handling)
+- Checkout Idempotency — Implemented with CheckoutAttempt model
+- Shipping Record Creation — Automatic shipping record creation at checkout
 
 ---
 
 ## 🎯 Recommended Implementation Order
 1) Reviews ✅ Completed
-2) Payments (Medium)
+2) Payments ✅ Completed
 3) Shipping (Low)
 4) Notifications (Low)
 

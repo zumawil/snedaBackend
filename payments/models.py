@@ -12,8 +12,10 @@ class Payment(models.Model):
     status = models.CharField(max_length=20, choices=[
         ('pending', 'Pending'),
         ('completed', 'Completed'),
+        ('abandoned', 'Abandoned'),
         ('failed', 'Failed'),
     ], default='pending')
+    paystack_reference = models.CharField(max_length=100, blank=True, null=True)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
     date_created = models.DateTimeField(auto_now_add=True)
 
