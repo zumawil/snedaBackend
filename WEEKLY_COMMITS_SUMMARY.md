@@ -17,7 +17,7 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
     - Updated documentation to reflect new endpoint and fixes
 
 ### Tuesday (2025-11-25)
-1. **TBD** - Implement Paystack payment integration and fix checkout flow
+1. **d7b6aea** - Implement Paystack payment integration and fix checkout flow
     - Set callback_url in Paystack payment initialization to API backend
     - Fixed checkout view to calculate order amount before payment processing
     - Implemented payment callback handling with verification
