@@ -176,11 +176,11 @@ class WebhookView(APIView):
             reference = data.get('reference')
             payment_status = data.get('status')
             method = data.get('channel')
-            amount = data.get('amount') / 100  # Convert from kobo to naira
+            amount = data.get('amount') / 100
             
             # 3. Get payment object by reference
             try:
-                payment = Payment.objects.get(paystack_reference=reference)
+                payment = Payment.objects.get(paystack_reference=reference, is_processed=False)
                 payment.transaction_id = str(payment_id)  
                 
                 if payment_status == 'success':
@@ -194,8 +194,10 @@ class WebhookView(APIView):
                     payment.status = 'failed'
                 
                 payment.method = method
+                payment.is_processed = True
                 # Add explicit save with force_update
                 payment.save(force_update=True)
+            
                 # Verify the save worked
                 payment.refresh_from_db()
         
@@ -204,19 +206,16 @@ class WebhookView(APIView):
                 
             except Payment.DoesNotExist:
                 # log for debugging
-                print(f"DEBUG: Payment with reference {reference} not found in database")
+                print(f"DEBUG: Payment with reference {reference} not found in database or is already processed")
                 
-            except Payment.DoesNotExist:
-                # log for debugging
-                print(f"Payment with reference {reference} not found in database")
-               
-                
+           
         elif event == 'charge.failed':
             # Handle failed payments
             reference = data.get('reference')
             try:
                 payment = Payment.objects.get(paystack_reference=reference)
                 payment.status = 'failed'
+                payment.is_processed = True
                 payment.save()
             except Payment.DoesNotExist:
                 print(f"Failed payment with reference {reference} not found")

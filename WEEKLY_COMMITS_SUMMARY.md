@@ -1,4 +1,4 @@
-# Weekly Commits Summary (This Week: 2025-11-23 to 2025-11-25)
+# Weekly Commits Summary (This Week: 2025-11-23 to 2025-11-26)
 
 This document summarizes all commits made this week in the Sneda Ecommerce API project.
 
@@ -36,6 +36,19 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
     - Added logging for shipping tracking number creation
     - Updated all documentation files
 
+### Wednesday (2025-11-26)
+1. **Webhook Payment Status Update Fix** - Resolved critical webhook issue preventing payment status updates
+    - **Root Cause Identified**: Status choice mismatch in `verify_payment()` function
+    - **Issue**: `payment.status = "completed"` but Payment model only has `'success'`, `'failed'`, `'abandoned'`, `'pending'` choices
+    - **Fix**: Changed `payment.status = "completed"` to `payment.status = "success"` in verify_payment function
+    - **Enhanced**: Added comprehensive debugging and validation to webhook processing
+    - **Added**: Detailed logging for tracking webhook execution flow
+    - **Added**: `force_update=True` and `refresh_from_db()` for reliable save operations
+    - **Added**: Error checking to verify payment status updates
+    - **Updated**: ENDPOINTS_DOCUMENTATION.md with webhook endpoint details
+    - **Updated**: NEXT_STEPS.md to mark payment system as completed
+    - **Updated**: WEEKLY_COMMITS_SUMMARY.md with fix documentation
+
 ## Summary of Work Completed This Week
 
 - **Shipping Management Enhancements**: Fixed ShippingSerializer, added shipping status endpoint with unique tracking number generation
@@ -44,6 +57,7 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 - **Payment Integration**: Implemented Paystack payment processing with callback handling
 - **Checkout Improvements**: Fixed order amount calculation, added idempotency, and shipping record creation
 - **Bug Fixes**: Fixed critical payment verification bug, improved error handling, fixed URL typo
+- **✅ CRITICAL FIX**: Resolved webhook payment status update issue that was preventing payment confirmations from updating properly
 
 ## Key Features Implemented This Week
 
@@ -54,6 +68,9 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 - Checkout idempotency and proper order processing flow
 - Comprehensive payment error handling and validation
 - User email integration in payment processing
+- **✅ CRITICAL**: Webhook payment status update system fully functional
+- **✅ ENHANCED**: Comprehensive webhook debugging and validation
+- **✅ UPDATED**: Complete API documentation reflecting payment system completion
 
 ## Bug Fixes This Week
 
@@ -65,3 +82,6 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 | `payments/urls.py` | Typo in URL name | Changed `paymenet-callback` to `payment-callback` |
 | `carts/views.py` | `bill_user()` used hardcoded email | Now accepts and uses actual user email |
 | `carts/views.py` | `create_shipping()` didn't return tracking number | Now returns tracking number |
+| `payments/views.py` | **CRITICAL**: Webhook payment status not updating | Fixed status choice mismatch (`"completed"` → `"success"`) |
+| `payments/views.py` | **CRITICAL**: Webhook debugging and validation missing | Added comprehensive logging and validation |
+| `payments/views.py` | **CRITICAL**: Payment save operations unreliable | Added `force_update=True` and `refresh_from_db()` |

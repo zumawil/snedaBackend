@@ -51,6 +51,7 @@ def create_shipping(order, address, pickup=False):
 
 from decimal import Decimal, ROUND_HALF_UP
 
+# convert cedis to pesewas for paystack
 def to_pesewas(amount):
     """Convert amount to pesewas (smallest currency unit for GHS)."""
     return int((Decimal(amount) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
@@ -149,7 +150,9 @@ class CheckoutView(APIView):
             response_data = {"order": order_serializer.data, "detail": "Order already processed"}
             # Include payment if exists
             payment = Payment.objects.filter(order=attempt.order).first()
-            if payment:
+            # check if payment was already created and is not processed for retries
+            if payment and payment.is_processed:
+                # payment is processed return data
                 response_data['payment'] = PaymentSerializer(payment).data
             return Response(response_data, status=status.HTTP_200_OK)
 
@@ -166,22 +169,6 @@ class CheckoutView(APIView):
                     {"detail": "Cart is empty. Please add items before checkout."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            # Validate all items before processing
-            # for item in items:
-            #     # warn if a product in the cart is out of stock
-            #     if item.product.stock <= 0:
-            #         return Response(
-            #             {"detail": f"{item.product.name} is no longer available"},
-            #             status=status.HTTP_400_BAD_REQUEST
-            #         )
-                
-            #     # warn if requested quantity exceeds available stock
-            #     if item.product.stock < item.quantity:
-            #         return Response(
-            #             {"detail": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
-            #             status=status.HTTP_400_BAD_REQUEST
-            #         )
             
             # Create order
             order = Order.objects.create(user=request.user)

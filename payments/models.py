@@ -21,6 +21,8 @@ class Payment(models.Model):
     paystack_reference = models.CharField(max_length=100, blank=True, null=True)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
     date_created = models.DateTimeField(auto_now_add=True)
+    is_processed = models.BooleanField(default=False) # to make payment processed to 
+                                                      # prevent duplicate webhook effects on DB
 
     def __str__(self):
         return f"Payment #{self.id} for Order #{self.order.id} ({self.status})"

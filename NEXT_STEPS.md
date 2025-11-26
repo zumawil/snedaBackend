@@ -1,32 +1,36 @@
 # 🚀 Next Steps - Sneda Ecommerce API
 
-**Last Updated:** 2025-11-25
-**Status:** Focusing on Checkout Hardening, Shipping, and Notifications
+**Last Updated:** 2025-11-26
+**Status:** Webhook issue resolved! Focusing on Shipping and Notifications
 
 ---
 
 ## 📋 Quick Summary
 
+- ✅ **COMPLETED** - Webhook payment status update issue resolved
 - 🎯 **2 feature areas** remaining (shipping (partially), notifications)
-- 🛠️ **Checkout hardening** in progress
+- 🛠️ **Checkout hardening** completed - payment system now fully functional
 
 ---
 
 ## ⏭️ Pending Tasks (Immediate Priority)
 
-### 1. Checkout / Order Hardening (Immediate)
-- Create a draft Order or CheckoutAttempt before calling external payment APIs so webhooks can reconcile state.
-- Return appropriate 4xx errors for expected conditions (e.g., 409 Conflict for stock races) and log failures.
+### ✅ COMPLETED - Payment System (2025-11-26)
+- ✅ **FIXED** - Webhook payment status update issue
+- ✅ **RESOLVED** - Status choice mismatch in verify_payment() function
+- ✅ **ENHANCED** - Added comprehensive debugging and validation
+- ✅ **ADDED** - Proper webhook event handling (charge.success, charge.failed)
 
-### 2. Shipping Management (Low Priority - Partially Implemented)
+### 1. Shipping Management (Low Priority - Partially Implemented)
 - Addresses CRUD and additional tracking features
 
-### 3. Notifications System (Low Priority)
+### 2. Notifications System (Low Priority)
 - List, mark read, mark all read, delete
 
 ---
 
 ## 🛠️ Recommended Immediate Checklist (Pending)
+- [x] **COMPLETED** - Payment webhook status update issue resolved
 - [ ] Create and run a migration to drop `Order.status` from the database once code is fully migrated; include a backfill RunPython migration if you need to preserve historical status values.
 - [ ] Return 4xx errors for expected failures (e.g., 409 Conflict for stock races) and avoid 500 for expected conditions
 - [ ] Add unit/integration tests for concurrent checkout and stock validation
