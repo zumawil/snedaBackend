@@ -12,6 +12,9 @@ from orders.serailizer import OrderSerializer
 import requests
 from dotenv import load_dotenv
 import os
+import hmac
+import hashlib
+import json
 
 load_dotenv()
 
@@ -103,24 +106,16 @@ def verify_payment(reference):
         response_data = response.json()
         
         # Get payment record
-        try:
-            payment = Payment.objects.get(paystack_reference=reference)
-        except Payment.DoesNotExist:
-            return False, "Payment record not found"
+        # try:
+        #     payment = Payment.objects.get(paystack_reference=reference)
+        # except Payment.DoesNotExist:
+        #     return False, "Payment record not found"
         
         if response_data.get('status') and response_data.get('data', {}).get('status') == 'success':
-            payment.transaction_id = response_data.get("data", {}).get('id')
-            payment.status = "completed"
-            payment.save()
             return True, "Payment verified successfully"
         
         # Payment failed or has other status
         paystack_status = response_data.get('data', {}).get('status', 'failed')
-        if paystack_status == 'abandoned':
-            payment.status = 'abandoned'
-        else:
-            payment.status = 'failed'
-        payment.save()
         return False, f"Payment verification failed: {paystack_status}"
         
     except requests.RequestException as e:
@@ -151,35 +146,99 @@ class PaymentCallback(APIView):
         else:
             return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
 
-        # updated = Product.objects.filter(
-                #     id=item.product.id,
-                #     stock__gte=item.quantity # select product who have enough stock for quantity requested
-                # ).update(stock=F('stock') - item.quantity)
-
-                # if updated == 0:
-                #     raise Exception(f"Stock changed for {item.product.name}")
-    
-        # Add error handling
-        # if not reference:
-        #     return Response(
-        #         {'error': 'reference is required'},
-        #         status=status.HTTP_400_BAD_REQUEST
-        #     )
         
-        # try:
-        #     payment = Payment.objects.get(transaction_id=reference)
-        #     order = OrderSerializer(payment.order)
+
+class WebhookView(APIView):
+    "webhook for paystack payment gateway"
+
+    def post(self, request):
+
+        # 1. Verify signature
+        signature = request.headers.get('x-paystack-signature', '')
+        if not signature:
+            return Response({"error": "Missing signature"}, status=status.HTTP_400_BAD_REQUEST)
+
+        secret = os.getenv('PAYSTACK_SECRET_KEY').encode('utf-8')
+        payload = request.body
+
+        computed_hash = hmac.new(secret, payload, hashlib.sha512).hexdigest()
+        verified = hmac.compare_digest(computed_hash, signature)
+
+        if not verified:
+            return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # 2. Handle events
+        event = request.data.get('event')
+        data = request.data.get('data', {})
+        
+        if event == 'charge.success':
+            payment_id = data.get('id')
+            reference = data.get('reference')
+            payment_status = data.get('status')
+            method = data.get('channel')
+            amount = data.get('amount') / 100  # Convert from kobo to naira
             
-        #     return Response(
-        #         {
-        #             'detail': 'payment callback called',
-        #             'reference': reference,  
-        #             'data': order.data
-        #         },
-        #         status=status.HTTP_200_OK
-        #     )
-        # except Payment.DoesNotExist:
-        #     return Response(
-        #         {'error': 'Payment not found'},
-        #         status=status.HTTP_404_NOT_FOUND
-        #     )
+            # 3. Get payment object by reference
+            try:
+                payment = Payment.objects.get(paystack_reference=reference)
+                payment.transaction_id = str(payment_id)  
+                
+                if payment_status == 'success':
+                    payment.status = 'success'
+                    # Update product stock
+                    self.update_product_stock(payment.order)
+                    
+                elif payment_status == 'abandoned':
+                    payment.status = 'abandoned'
+                else:
+                    payment.status = 'failed'
+                
+                payment.method = method
+                # Add explicit save with force_update
+                payment.save(force_update=True)
+                # Verify the save worked
+                payment.refresh_from_db()
+        
+                if payment.status != 'success':
+                    print(f"ERROR: Status not updated! Expected 'success', got '{payment.status}'")
+                
+            except Payment.DoesNotExist:
+                # log for debugging
+                print(f"DEBUG: Payment with reference {reference} not found in database")
+                
+            except Payment.DoesNotExist:
+                # log for debugging
+                print(f"Payment with reference {reference} not found in database")
+               
+                
+        elif event == 'charge.failed':
+            # Handle failed payments
+            reference = data.get('reference')
+            try:
+                payment = Payment.objects.get(paystack_reference=reference)
+                payment.status = 'failed'
+                payment.save()
+            except Payment.DoesNotExist:
+                print(f"Failed payment with reference {reference} not found")
+
+        # 5. Always respond 200 to Paystack
+        return Response(status=status.HTTP_200_OK)
+    
+    def update_product_stock(self, order):
+        """
+        Update product stock when payment succeeds.
+        """
+        from django.db.models import F
+        from products.models import Product
+        
+        for order_item in order.items.all():
+            # Update stock atomically
+            updated = Product.objects.filter(
+                id=order_item.product.id, # get the product id of the order item
+                stock__gte=order_item.quantity # check if the stock of the product is greate than the item requested
+            ).update(stock=F('stock') - order_item.quantity) # update it directly in DB to prevent race conditions
+            
+            if updated == 0:
+                print(f"Warning: Insufficient stock for product {order_item.product.name}")
+
+    

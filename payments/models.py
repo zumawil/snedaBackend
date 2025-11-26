@@ -5,15 +5,18 @@ class Payment(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="payments")
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     method = models.CharField(max_length=20, choices=[
-        ('momo', 'Mobile Money'),
-        ('card', 'Credit Card'),
-        ('cash', 'Cash'),
+        ('card', 'Card'),
+        ('mobile_money', 'Mobile Money'),
+        ('bank', 'Bank Account'),
+        ('ussd', 'USSD'),
+        ('qr', 'QR Payment'),
+        ('bank_transfer', 'Bank Transfer'),
     ])
     status = models.CharField(max_length=20, choices=[
-        ('pending', 'Pending'),
-        ('completed', 'Completed'),
-        ('abandoned', 'Abandoned'),
-        ('failed', 'Failed'),
+        ('pending', 'Pending'),            # Before webhook confirms
+        ('success', 'Success'),            # Paystack -> 'success'
+        ('failed', 'Failed'),              # Paystack -> 'failed'
+        ('abandoned', 'Abandoned'),        # Paystack -> 'abandoned'
     ], default='pending')
     paystack_reference = models.CharField(max_length=100, blank=True, null=True)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
