@@ -10,6 +10,7 @@ from .models import Order, OrderItem
 from shipping.models import Shipping
 from users.permissions import IsAdminUser, IsVerifiedUser
 from django.db.models import F
+from products.models import Product
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ class OrderCancelView(APIView):
     """
     Cancel a pending order.
 
-    POST /orders/<pk>/cancel/: Cancel the specified order if its status is 'pending'.
+    POST /order/cancel/<pk>/: Cancel the specified order if its status is 'pending'.
     Only the order owner can cancel their order.
     """
     permission_classes = [IsVerifiedUser]

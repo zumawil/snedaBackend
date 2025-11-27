@@ -135,7 +135,6 @@ from orders.models import Order, OrderItem
 class CheckoutView(APIView):
     permission_classes = [IsVerifiedUser]
 
-    @transaction.atomic()
     def post(self, request):
 
         # idempotency_key id generated from the frontend
@@ -170,30 +169,28 @@ class CheckoutView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Create order
+            # Create order first (outside of payment transaction)
             order = Order.objects.create(user=request.user)
-            # loop triugh every item in the cart and create an order item
-            for item in items:
-                # Try to reserve stock atomically
-                updated = Product.objects.filter(
-                    id=item.product.id,
-                    stock__gte=item.quantity  # Ensure sufficient stock
-                ).update(stock=F('stock') - item.quantity)
-                
-                if updated == 0:
-                    # Stock insufficient - rollback transaction
-                    raise Exception(f'Insufficient stock for {item.product.name}. Available: {item.product.stock}, Requested: {item.quantity}')
-                    return Response(
-                        {"detail": "Insufficient stock for item: {}".format(item.product.name)},
-                        status=status.HTTP_400_BAD_REQUEST
+            
+            # Reserve stock atomically - do this in a separate transaction
+            with transaction.atomic():
+                for item in items:
+                    # Try to reserve stock atomically
+                    updated = Product.objects.filter(
+                        id=item.product.id,
+                        stock__gte=item.quantity  # Ensure sufficient stock
+                    ).update(stock=F('stock') - item.quantity)
+                    
+                    if updated == 0:
+                        # Stock insufficient - rollback this transaction
+                        raise Exception(f'Insufficient stock for {item.product.name}. Available: {item.product.stock}, Requested: {item.quantity}')
+                    
+                    OrderItem.objects.create(
+                            order=order,
+                            product=item.product,
+                            quantity=item.quantity,
+                            price=item.product.price
                     )
-                
-                OrderItem.objects.create(
-                        order=order,
-                        product=item.product,
-                        quantity=item.quantity,
-                        price=item.product.price
-                )
 
             # Calculate total
             amount = sum([item.price * item.quantity for item in order.items.all()])
@@ -205,7 +202,7 @@ class CheckoutView(APIView):
             tracking_number = create_shipping(order, address, pickup)
             logger.info(f"Shipping created with tracking number: {tracking_number}")
 
-            # Bill user using their email
+            # Bill user using their email - do this outside of stock reservation transaction
             data = bill_user(amount, request.user.email)
 
             payment = None
