@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-11-25
+**Last Updated:** 2025-11-27
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 
 ---
@@ -113,16 +113,21 @@
 |--------|----------|-------------|---------------|--------|
 | `GET` | `/payments/` | List all payments for user | ✅ | ✅ Working |
 | `GET` | `/payments/<pk>/` | Get specific payment details | ✅ | ✅ Working |
-| `POST` | `/payments/` | Initiate a new payment for an order | ✅ | ✅ Working |
-| `GET` | `/payments/callback/` | Handle Paystack payment callback/webhook | ❌ | ✅ Working |
-| `POST` | `/payment/webhook/` | Handle Paystack webhook events (charge.success, charge.failed) | ❌ | ✅ Working |
+| `GET` | `/payments/order/<order_id>/` | Get payment by order ID | ✅ | ✅ Working |
+| `POST` | `/payments/order/<order_id>/` | Initialize payment for failed checkout (retry) | ✅ | ✅ Working |
+| `GET` | `/payments/callback/` | Handle Paystack payment callback | ❌ | ✅ Working |
+| `POST` | `/payment/webhook/` | Handle Paystack webhook events | ❌ | ✅ Working |
 
 **Notes:**
 - Payment initiation uses Paystack API with callback URL set to API backend
 - Callback endpoint verifies payment status and updates payment record
-- Webhook endpoint handles payment status updates from Paystack
+- Webhook endpoint handles all payment events: `charge.success`, `charge.failed`, `charge.abandoned`
 - **FIXED:** Webhook status update issue - status choice mismatch resolved
-- Checkout now includes payment initialization with idempotency support
+- **FIXED:** Webhook secret key validation - prevents crashes if env var missing
+- **FIXED:** Added abandoned payment handling in webhook
+- **IMPROVED:** Removed unnecessary `force_update=True` for cleaner code
+- Checkout includes payment initialization with idempotency support
+- Payment retry endpoint allows users to reinitialize payment for failed orders
 
 ---
 
@@ -191,10 +196,10 @@
 | Cart | 8 | 8 | 0 | 0 |
 | Orders | 9 | 9 | 0 | 0 |
 | Shipping | 1 | 1 | 0 | 0 |
-| Payments | 4 | 4 | 0 | 0 |
+| Payments | 6 | 6 | 0 | 0 |
 | Reviews | 4 | 4 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **57** | **57** | **0** | **0** |
+| **TOTAL** | **59** | **59** | **0** | **0** |
 
 ---
 
@@ -325,3 +330,17 @@ order.save()
 
 - **Added**: Now returns the generated `tracking_number`
 - **Added**: Logging statement in checkout view for tracking number
+
+**Fixed:** `payments/views.py` - Payment handling improvements (2025-11-27)
+
+- **FIXED**: Removed duplicate `PaymentView.post()` method to eliminate confusion
+- **FIXED**: Amount conversion bug - now correctly stores cedis instead of pesewas in database
+- **FIXED**: Consistent `bill_user()` usage - always passes cedis, not pesewas
+- **ADDED**: Permission class `IsVerifiedUser` to `GetPaymentByOrder`
+- **ADDED**: User authorization check in `GetPaymentByOrder.get()` to prevent unauthorized access
+- **FIXED**: Webhook secret key validation - prevents crashes if environment variable is missing
+- **ADDED**: Handler for `charge.abandoned` webhook event
+- **IMPROVED**: Removed unnecessary `force_update=True` from payment save operations
+- **ADDED**: Payment retry endpoint for failed checkout payments
+
+**Payment System Status:** ✅ Fully functional with proper error handling and security

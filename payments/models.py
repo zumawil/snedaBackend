@@ -11,7 +11,7 @@ class Payment(models.Model):
         ('ussd', 'USSD'),
         ('qr', 'QR Payment'),
         ('bank_transfer', 'Bank Transfer'),
-    ])
+    ], default='card')
     status = models.CharField(max_length=20, choices=[
         ('pending', 'Pending'),            # Before webhook confirms
         ('success', 'Success'),            # Paystack -> 'success'

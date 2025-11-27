@@ -1,4 +1,4 @@
-# Weekly Commits Summary (This Week: 2025-11-23 to 2025-11-26)
+# Weekly Commits Summary (This Week: 2025-11-23 to 2025-11-27)
 
 This document summarizes all commits made this week in the Sneda Ecommerce API project.
 
@@ -49,6 +49,21 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
     - **Updated**: NEXT_STEPS.md to mark payment system as completed
     - **Updated**: WEEKLY_COMMITS_SUMMARY.md with fix documentation
 
+### Thursday (2025-11-27)
+1. **Payment System Optimization** - Comprehensive payment handling improvements and security enhancements
+    - **FIXED**: Removed duplicate `PaymentView.post()` method to eliminate confusion
+    - **FIXED**: Critical amount conversion bug - now correctly stores cedis instead of pesewas in database
+    - **FIXED**: Consistent `bill_user()` usage - always passes cedis, conversion handled internally
+    - **ADDED**: Permission class `IsVerifiedUser` to `GetPaymentByOrder` for security
+    - **ADDED**: User authorization check in `GetPaymentByOrder.get()` to prevent unauthorized access
+    - **FIXED**: Webhook secret key validation - prevents server crashes if environment variable is missing
+    - **ADDED**: Handler for `charge.abandoned` webhook event for complete payment lifecycle
+    - **IMPROVED**: Removed unnecessary `force_update=True` from payment save operations
+    - **ADDED**: Payment retry endpoint (`POST /payments/order/<order_id>/`) for failed checkout payments
+    - **UPDATED**: ENDPOINTS_DOCUMENTATION.md with all payment improvements
+    - **UPDATED**: NEXT_STEPS.md to reflect payment system completion
+    - **UPDATED**: WEEKLY_COMMITS_SUMMARY.md with comprehensive fix documentation
+
 ## Summary of Work Completed This Week
 
 - **Shipping Management Enhancements**: Fixed ShippingSerializer, added shipping status endpoint with unique tracking number generation
@@ -58,6 +73,7 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 - **Checkout Improvements**: Fixed order amount calculation, added idempotency, and shipping record creation
 - **Bug Fixes**: Fixed critical payment verification bug, improved error handling, fixed URL typo
 - **✅ CRITICAL FIX**: Resolved webhook payment status update issue that was preventing payment confirmations from updating properly
+- **✅ PAYMENT OPTIMIZATION**: Comprehensive payment system improvements including security, error handling, and bug fixes
 
 ## Key Features Implemented This Week
 
@@ -70,6 +86,9 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 - User email integration in payment processing
 - **✅ CRITICAL**: Webhook payment status update system fully functional
 - **✅ ENHANCED**: Comprehensive webhook debugging and validation
+- **✅ SECURITY**: Added permission classes and user authorization to payment endpoints
+- **✅ BUG FIX**: Fixed amount conversion bug (cedis vs pesewas)
+- **✅ FEATURE**: Payment retry endpoint for failed checkouts
 - **✅ UPDATED**: Complete API documentation reflecting payment system completion
 
 ## Bug Fixes This Week
@@ -85,3 +104,10 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 | `payments/views.py` | **CRITICAL**: Webhook payment status not updating | Fixed status choice mismatch (`"completed"` → `"success"`) |
 | `payments/views.py` | **CRITICAL**: Webhook debugging and validation missing | Added comprehensive logging and validation |
 | `payments/views.py` | **CRITICAL**: Payment save operations unreliable | Added `force_update=True` and `refresh_from_db()` |
+| `payments/views.py` | **CRITICAL**: Duplicate payment creation logic | Removed duplicate `PaymentView.post()` method |
+| `payments/views.py` | **CRITICAL**: Amount stored in pesewas instead of cedis | Fixed to store cedis, conversion handled in `bill_user()` |
+| `payments/views.py` | **SECURITY**: Missing permission class | Added `IsVerifiedUser` to `GetPaymentByOrder` |
+| `payments/views.py` | **SECURITY**: No user authorization check | Added user check in `GetPaymentByOrder.get()` |
+| `payments/views.py` | **ERROR**: Webhook crashes if env var missing | Added secret key validation before encoding |
+| `payments/views.py` | **MISSING**: No abandoned payment handler | Added `charge.abandoned` webhook event handler |
+| `payments/views.py` | **CODE QUALITY**: Unnecessary `force_update=True` | Removed for cleaner, more reliable code |

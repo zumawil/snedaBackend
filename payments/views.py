@@ -15,6 +15,9 @@ import os
 import hmac
 import hashlib
 import json
+from carts.views import to_pesewas, bill_user
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 
 load_dotenv()
 
@@ -46,37 +49,54 @@ class PaymentView(APIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def post(self, request):
-        """
-        Initiate a payment for an order.
-        Expects: order_id, amount, method
-        """
+   
+class GetPaymentByOrder(APIView):
+    permission_classes = [IsVerifiedUser]
+    """
+    Get payment by order.
+    """
+    def get(self, request, order_id):
         try:
-            order_id = request.data.get('order_id')
-            amount = request.data.get('amount')
-            method = request.data.get('method')
-
-            if not all([order_id, amount, method]):
-                return Response({'error': 'order_id, amount, and method are required'}, status=status.HTTP_400_BAD_REQUEST)
-
-            order = get_object_or_404(Order, pk=order_id, user=request.user)
-
-            # Check if payment already exists for this order
-            if Payment.objects.filter(order=order).exists():
-                return Response({'error': 'Payment already initiated for this order'}, status=status.HTTP_400_BAD_REQUEST)
-
-            payment = Payment.objects.create(
-                order=order,
-                amount=amount,
-                method=method
-            )
-
+            payment = Payment.objects.get(order_id=order_id, order__user=request.user)
             serializer = PaymentSerializer(payment)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Payment.DoesNotExist:
+            return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    """
+        initialize payment for failed payment t checkout
+    """
+    def post(self, request, order_id):
+        try:
+            order = get_object_or_404(Order, pk=order_id, 
+            user=request.user, shipping__status='pending')
+
+            data = bill_user(order.total_amount, request.user.email)
+            print(data)
+
+            if data.get('status') == True:
+                # create payment for order
+                payment = Payment.objects.create(
+                    order=order,
+                    amount=order.total_amount,
+                    status='pending',
+                    paystack_reference=data['data']['reference']
+                )
+                data = {
+                    'order': OrderSerializer(order).data,
+                    'payment_url':data.get('data').get('authorization_url'),
+                }
+           
+                return Response(data, status=status.HTTP_200_OK)
+            else:
+                return Response({'error': 'Payment failed try again'}, status=status.HTTP_400_BAD_REQUEST)
+           
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-
+            
 def verify_payment(reference):
     """
     Verify a Paystack payment transaction.
@@ -146,15 +166,16 @@ class PaymentCallback(APIView):
         else:
             return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
 
-        
-
+@method_decorator(csrf_exempt, name='dispatch')
 class WebhookView(APIView):
-    "webhook for paystack payment gateway"
+    """
+    webhook for paystack payment gateway
+    """
 
     def post(self, request):
 
         # 1. Verify signature
-        signature = request.headers.get('x-paystack-signature', '')
+        signature = request.headers.get('x-paystack-signature', None)
         if not signature:
             return Response({"error": "Missing signature"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -196,7 +217,7 @@ class WebhookView(APIView):
                 payment.method = method
                 payment.is_processed = True
                 # Add explicit save with force_update
-                payment.save(force_update=True)
+                payment.save()
             
                 # Verify the save worked
                 payment.refresh_from_db()
@@ -219,10 +240,20 @@ class WebhookView(APIView):
                 payment.save()
             except Payment.DoesNotExist:
                 print(f"Failed payment with reference {reference} not found")
-
-        # 5. Always respond 200 to Paystack
+        elif event == 'charge.abandoned':
+            # Handle abandoned payments
+            reference = data.get('reference')
+            try:
+                payment = Payment.objects.get(paystack_reference=reference)
+                payment.status = 'abandoned'
+                payment.is_processed = True
+                payment.save()
+            except Payment.DoesNotExist:
+                print(f"Abandoned payment with reference {reference} not found")
+        # respond 200 to Paystack
         return Response(status=status.HTTP_200_OK)
     
+
     def update_product_stock(self, order):
         """
         Update product stock when payment succeeds.

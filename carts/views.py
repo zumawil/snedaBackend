@@ -147,7 +147,7 @@ class CheckoutView(APIView):
         # check if there was an order attempt
         if attempt:
             order_serializer = OrderSerializer(attempt.order)
-            response_data = {"order": order_serializer.data, "detail": "Order already processed"}
+            response_data = {"order": order_serializer.data, "detail": "payment order already created"}
             # Include payment if exists
             payment = Payment.objects.filter(order=attempt.order).first()
             # check if payment was already created and is not processed for retries
@@ -201,7 +201,6 @@ class CheckoutView(APIView):
                 payment = Payment.objects.create(
                     order=order,
                     amount=amount,
-                    method='card',  # Assuming card for Paystack
                     status='pending',
                     paystack_reference=data['data']['reference']
                 )
@@ -247,6 +246,7 @@ class AddToCartView(APIView):
     permission_classes = [IsVerifiedUser]
 
     def post(self, request, product_pk):
+        # create cart if it doesn't exist for user
         cart, created = Cart.objects.get_or_create(user=request.user)
 
         try:
@@ -255,6 +255,9 @@ class AddToCartView(APIView):
             return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        if product.stock < 1:
+            return Response({'error': 'Product is out of stock'}, status=status.HTTP_400_BAD_REQUEST)
 
         # check if the cart item is already created in the cart
         cart_item, created = CartItem.objects.get_or_create(
@@ -265,6 +268,8 @@ class AddToCartView(APIView):
         
         # if the cart item already exists
         if not created:
+            if product.stock < cart_item.quantity + 1:
+                return Response({'error': 'Insufficient stock'}, status=status.HTTP_400_BAD_REQUEST)
             cart_item.quantity += 1
             cart_item.save()
         
