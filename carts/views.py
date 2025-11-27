@@ -172,14 +172,27 @@ class CheckoutView(APIView):
             
             # Create order
             order = Order.objects.create(user=request.user)
-
+            # loop triugh every item in the cart and create an order item
             for item in items:
-            
+                # Try to reserve stock atomically
+                updated = Product.objects.filter(
+                    id=item.product.id,
+                    stock__gte=item.quantity  # Ensure sufficient stock
+                ).update(stock=F('stock') - item.quantity)
+                
+                if updated == 0:
+                    # Stock insufficient - rollback transaction
+                    raise Exception(f'Insufficient stock for {item.product.name}. Available: {item.product.stock}, Requested: {item.quantity}')
+                    return Response(
+                        {"detail": "Insufficient stock for item: {}".format(item.product.name)},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
                 OrderItem.objects.create(
-                    order=order,
-                    product=item.product,
-                    quantity=item.quantity,
-                    price=item.product.price
+                        order=order,
+                        product=item.product,
+                        quantity=item.quantity,
+                        price=item.product.price
                 )
 
             # Calculate total

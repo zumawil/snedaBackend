@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
 from shipping.models import Shipping
 from users.permissions import IsAdminUser, IsVerifiedUser
+from django.db.models import F
 
 logger = logging.getLogger(__name__)
 
@@ -174,14 +175,15 @@ class OrderCancelView(APIView):
             if current_status == "pending":
                 # Restore stock for each order item
                 for item in order.items.all():
-                    item.product.stock += item.quantity
-                    item.product.save()
+                    Product.objects.filter(
+                        id=item.product.id
+                    ).update(stock=F('stock') + item.quantity)
                 # cancel any linked shipping record if present
                 if hasattr(order, 'shipping') and order.shipping:
-                    logger.info(f"Cancelling shipping for order {order.id}")
+                    # logger.info(f"Cancelling shipping for order {order.id}")
                     order.shipping.status = 'cancelled'
                     order.shipping.save()
-                    logger.info(f"Shipping cancelled for order {order.id}")
+                    # logger.info(f"Shipping cancelled for order {order.id}")
                 # nothing to write to Order model; shipping holds the state
                 return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)
             elif current_status == 'cancelled':

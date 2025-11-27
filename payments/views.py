@@ -206,8 +206,7 @@ class WebhookView(APIView):
                 
                 if payment_status == 'success':
                     payment.status = 'success'
-                    # Update product stock
-                    self.update_product_stock(payment.order)
+                    
                     
                 elif payment_status == 'abandoned':
                     payment.status = 'abandoned'
@@ -238,6 +237,10 @@ class WebhookView(APIView):
                 payment.status = 'failed'
                 payment.is_processed = True
                 payment.save()
+
+                # restore product stock
+                self.restore_product_stock(payment.order)
+                
             except Payment.DoesNotExist:
                 print(f"Failed payment with reference {reference} not found")
         elif event == 'charge.abandoned':
@@ -271,4 +274,12 @@ class WebhookView(APIView):
             if updated == 0:
                 print(f"Warning: Insufficient stock for product {order_item.product.name}")
 
-    
+    def restore_product_stock(self, order):
+        """Restore product stock when payment fails."""
+        from django.db.models import F
+        from products.models import Product
+        
+        for order_item in order.items.all():
+            Product.objects.filter(
+                id=order_item.product.id
+            ).update(stock=F('stock') + order_item.quantity)
