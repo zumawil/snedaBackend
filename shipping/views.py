@@ -9,6 +9,9 @@ from users.permissions import IsVerifiedUser, IsAdminUser
 
 # Create your views here.
 class ShippingStatusView(APIView):
+    """
+    get shipping status
+    """
 
     permission_classes = [IsVerifiedUser]
 
@@ -21,24 +24,29 @@ class ShippingStatusView(APIView):
 
         return Response({"data": serializer.data}, status=status.HTTP_200_OK)
 
-# class UpdateShippingStatusView(APIView):
-#     # only admin users can update shipping status
-#     permission_classes = [IsAdminUser]
+class UpdateShippingStatusView(APIView):
+    # only admin users can update shipping status
+    """
+    update shipping status for an order
+    only verified admins are allowed 
+    """
+    permission_classes = [IsAdminUser,IsVerifiedUser]
 
-#     def put(self, request, order_id):
-#         order_pk = order_id
-#         shipping = get_object_or_404(Shipping, order__id=order_pk)
-#         if not shipping:
-#             return Response({"error":"shipping not found for this order"}, status=status.HTTP_404_NOT_FOUND)
+    def put(self, request, order_id):
+        order_pk = order_id
+        shipping = get_object_or_404(Shipping, order__id=order_pk)
+        if not shipping:
+            return Response({"error":"shipping not found for this order"}, status=status.HTTP_404_NOT_FOUND)
         
-#         serializer = ShippingSerializer(shipping, data=request.data, partial=True)
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response({"data": serializer.data}, status=status.HTTP_200_OK)
-#         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer = ShippingSerializer(shipping, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"data": serializer.data}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # track shipping by tracking number
 class TrackShippingView(APIView):
+
 
     permission_classes = [IsVerifiedUser]
 

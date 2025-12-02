@@ -64,6 +64,21 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
     - **UPDATED**: NEXT_STEPS.md to reflect payment system completion
     - **UPDATED**: WEEKLY_COMMITS_SUMMARY.md with comprehensive fix documentation
 
+2. **Stock Management Test Fix and Transaction Separation** - Fixed failing payment failure stock restoration test
+    - **ISSUE**: `test_payment_failure_restores_stock` was failing with `AssertionError: 10 != 7`
+    - **ROOT CAUSE**: Stock reduction and payment processing were in same database transaction
+    - **FIX**: Separated stock reservation from payment processing:
+      - Removed `@transaction.atomic` from entire checkout method
+      - Created separate atomic transaction for stock reservation only
+      - Moved payment processing outside of stock reservation transaction
+    - **TEST FIX**: Updated test to get order directly instead of payment object (when payment fails)
+    - **RESULT**: All 14 stock management tests now pass ✅
+    - **FILES MODIFIED**: 
+      - `carts/views.py` - Updated CheckoutView transaction management
+      - `carts/tests/test_stock_management.py` - Fixed test handling for missing payment objects
+    - **UPDATED**: ENDPOINTS_DOCUMENTATION.md with new fixes documentation
+    - **UPDATED**: NEXT_STEPS.md to mark stock management as completed
+
 ## Summary of Work Completed This Week
 
 - **Shipping Management Enhancements**: Fixed ShippingSerializer, added shipping status endpoint with unique tracking number generation
@@ -74,6 +89,7 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 - **Bug Fixes**: Fixed critical payment verification bug, improved error handling, fixed URL typo
 - **✅ CRITICAL FIX**: Resolved webhook payment status update issue that was preventing payment confirmations from updating properly
 - **✅ PAYMENT OPTIMIZATION**: Comprehensive payment system improvements including security, error handling, and bug fixes
+- **✅ STOCK MANAGEMENT**: Fixed payment failure stock restoration test and improved checkout transaction handling
 
 ## Key Features Implemented This Week
 
@@ -90,6 +106,8 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 - **✅ BUG FIX**: Fixed amount conversion bug (cedis vs pesewas)
 - **✅ FEATURE**: Payment retry endpoint for failed checkouts
 - **✅ UPDATED**: Complete API documentation reflecting payment system completion
+- **✅ STOCK FIX**: Fixed payment failure stock restoration by separating transactions
+- **✅ TESTING**: All 14 stock management tests now pass with proper error handling
 
 ## Bug Fixes This Week
 
@@ -111,3 +129,5 @@ This document summarizes all commits made this week in the Sneda Ecommerce API p
 | `payments/views.py` | **ERROR**: Webhook crashes if env var missing | Added secret key validation before encoding |
 | `payments/views.py` | **MISSING**: No abandoned payment handler | Added `charge.abandoned` webhook event handler |
 | `payments/views.py` | **CODE QUALITY**: Unnecessary `force_update=True` | Removed for cleaner, more reliable code |
+| `carts/views.py` | **CRITICAL**: Stock rolled back with payment failure | Separated stock reservation from payment processing |
+| `carts/tests/test_stock_management.py` | **TEST FAILURE**: Payment failure test failing | Fixed test to handle missing payment objects correctly |
