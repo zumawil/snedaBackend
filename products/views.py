@@ -12,6 +12,7 @@ from django.shortcuts import get_object_or_404
 
 from .serializers import ProductImageSerializer, ProductSerializer, CategorySerializer
 from .models import Category, Product, ProductImage
+from utils.apiResponse import api_response
 # Create your views here.
 
 # Product API Views
@@ -101,9 +102,12 @@ class GetProductReviewsView(APIView):
         product_id = request.data.get('product')
 
         if not product_id:
-            return Response(
-                {"error": "Product name is required."},
-                status=status.HTTP_400_BAD_REQUEST
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing product ID",
+                message="Product ID is required",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         # Get product or return 404
@@ -112,7 +116,9 @@ class GetProductReviewsView(APIView):
         # Serialize all reviews for this product
         reviews = ReviewsSerializer(product.reviews.all(), many=True)
 
-        return Response(
-            {"data": reviews.data},
-            status=status.HTTP_200_OK
+        return api_response(
+            success=True,
+            data={"reviews": reviews.data},
+            message="Product reviews retrieved successfully",
+            status_code=status.HTTP_200_OK
         )

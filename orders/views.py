@@ -11,6 +11,7 @@ from shipping.models import Shipping
 from users.permissions import IsAdminUser, IsVerifiedUser
 from django.db.models import F
 from products.models import Product
+from utils.apiResponse import api_response
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +35,29 @@ class OrderView(APIView):
                 # Get specific order
                 order = get_object_or_404(Order, pk=pk, user=request.user)
                 serializer = OrderSerializer(order)
-                return Response(
-                    serializer.data, 
-                    status=status.HTTP_200_OK
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Order retrieved successfully",
+                    status_code=status.HTTP_200_OK
                 )
             else:
                 # List all orders for user
                 orders = Order.objects.filter(user=request.user)
                 serializer = OrderSerializer(orders, many=True)
-                return Response(
-                    serializer.data,
-                    status=status.HTTP_200_OK
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Orders retrieved successfully",
+                    status_code=status.HTTP_200_OK
                 )
         except Exception as e:
-            return Response(
-                {'error': str(e)}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving orders",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 class OrderItemView(APIView):
@@ -71,14 +79,30 @@ class OrderItemView(APIView):
                 # Get specific order item
                 order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
                 serializer = OrderItemSerializer(order_item)
-                return Response(serializer.data, status=status.HTTP_200_OK)
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Order item retrieved successfully",
+                    status_code=status.HTTP_200_OK
+                )
             else:
                 # List all order items for user
                 order_items = OrderItem.objects.filter(order__user=request.user)
                 serializer = OrderItemSerializer(order_items, many=True)
-                return Response(serializer.data, status=status.HTTP_200_OK)
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Order items retrieved successfully",
+                    status_code=status.HTTP_200_OK
+                )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving order items",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
     def post(self, request):
         serializer = OrderItemSerializer(data=request.data)
@@ -86,10 +110,27 @@ class OrderItemView(APIView):
             # Ensure the order belongs to the user
             order = serializer.validated_data['order']
             if order.user != request.user:
-                return Response({'error': 'Unauthorized'}, status=status.HTTP_403_FORBIDDEN)
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Unauthorized",
+                    message="You cannot create order items for orders that don't belong to you",
+                    status_code=status.HTTP_403_FORBIDDEN
+                )
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Order item created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message="Invalid order item data",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     def put(self, request, pk):
         try:
@@ -97,18 +138,46 @@ class OrderItemView(APIView):
             serializer = OrderItemSerializer(order_item, data=request.data)
             if serializer.is_valid():
                 serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Order item updated successfully",
+                    status_code=status.HTTP_200_OK
+                )
+            return api_response(
+                success=False,
+                data=None,
+                error="Validation failed",
+                message="Invalid order item data",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error updating order item",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
     def delete(self, request, pk):
         try:
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
             order_item.delete()
-            return Response({'message': 'OrderItem deleted'}, status=status.HTTP_204_NO_CONTENT)
+            return api_response(
+                success=True,
+                data=None,
+                message="Order item deleted successfully",
+                status_code=status.HTTP_204_NO_CONTENT
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error deleting order item",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class OrderUpdateStatusView(APIView):
@@ -128,17 +197,23 @@ class OrderUpdateStatusView(APIView):
             # Only allow status field to be updated
             new_status = request.data.get('status')
             if not new_status:
-                return Response(
-                    {'error': 'Status field is required'}, 
-                    status=status.HTTP_400_BAD_REQUEST
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Missing status",
+                    message="Status field is required",
+                    status_code=status.HTTP_400_BAD_REQUEST
                 )
             
             # Validate status choice
             valid_statuses = ['pending', 'shipped', 'delivered', 'cancelled']
             if new_status not in valid_statuses:
-                return Response(
-                    {'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}, 
-                    status=status.HTTP_400_BAD_REQUEST
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Invalid status",
+                    message=f'Invalid status. Must be one of: {", ".join(valid_statuses)}',
+                    status_code=status.HTTP_400_BAD_REQUEST
                 )
             
             # Update shipping.status (Shipping is the source of truth for order state)
@@ -149,15 +224,29 @@ class OrderUpdateStatusView(APIView):
                 logger.info(f"Shipping status updated for order {order.id}")
             else:
                 logger.warning(f"No shipping record found for order {order.id}")
-                return Response(
-                    {'error':"no shipping related to this order was found"},
-                    status=status.HTTP_400_BAD_REQUEST
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="No shipping record",
+                    message="No shipping related to this order was found",
+                    status_code=status.HTTP_400_BAD_REQUEST
                 )
             
             serializer = OrderSerializer(order)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message=f"Order status updated to {new_status}",
+                status_code=status.HTTP_200_OK
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error updating order status",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 class OrderCancelView(APIView):
     """
@@ -186,10 +275,33 @@ class OrderCancelView(APIView):
                     order.shipping.save()
                     # logger.info(f"Shipping cancelled for order {order.id}")
                 # nothing to write to Order model; shipping holds the state
-                return Response({'detail': 'Order cancelled'}, status=status.HTTP_200_OK)
+                return api_response(
+                    success=True,
+                    data=None,
+                    message="Order cancelled successfully",
+                    status_code=status.HTTP_200_OK
+                )
             elif current_status == 'cancelled':
-                return Response({'detail':'order already cancelled'}, status=status.HTTP_400_BAD_REQUEST)
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Already cancelled",
+                    message="Order already cancelled",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
             else:
-                return Response({'detail':"order can't be cancelled"},  status=status.HTTP_400_BAD_REQUEST)
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Cannot cancel",
+                    message="Order can't be cancelled in its current state",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error cancelling order",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )

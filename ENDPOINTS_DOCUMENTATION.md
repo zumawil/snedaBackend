@@ -1,7 +1,56 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-11-27
+**Last Updated:** 2025-12-02
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
+
+---
+
+## 📋 Standard API Response Format
+
+All API endpoints return responses in a consistent format:
+
+```json
+{
+    "success": true | false,
+    "data": { ... } | null,
+    "message": "Human readable message",
+    "error": "Error type" | null
+}
+```
+
+**Response Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | `true` if the request was successful, `false` otherwise |
+| `data` | object/array/null | The response payload (null on errors) |
+| `message` | string | Human-readable description of the result |
+| `error` | string/null | Error type/code (null on success) |
+
+**Example Success Response:**
+```json
+{
+    "success": true,
+    "data": {
+        "user": {
+            "id": 1,
+            "email": "user@example.com",
+            "first_name": "John"
+        }
+    },
+    "message": "User profile retrieved successfully",
+    "error": null
+}
+```
+
+**Example Error Response:**
+```json
+{
+    "success": false,
+    "data": null,
+    "message": "Invalid or expired OTP code",
+    "error": "Invalid OTP"
+}
+```
 
 ---
 

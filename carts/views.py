@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 import os
 from payments.models import Payment
 from payments.serializers import PaymentSerializer
+from utils.apiResponse import api_response
 
 load_dotenv()
 
@@ -98,14 +99,19 @@ class CartView(APIView):
         try:
             cart, created = Cart.objects.get_or_create(user=request.user)
             serializer = CartSerializer(cart)
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Cart retrieved successfully",
+                status_code=status.HTTP_200_OK
             )
         except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving cart",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 class CartItemListCreateView(generics.ListCreateAPIView):
@@ -140,7 +146,13 @@ class CheckoutView(APIView):
         # idempotency_key id generated from the frontend
         idempotency_key = request.data.get('X-Idempotency-Key') or request.headers.get('X-Idempotency-Key')
         if not idempotency_key:
-            return Response({"error": "Idempotency key required"}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Idempotency key required",
+                message="Idempotency key is required for checkout",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         attempt = CheckoutAttempt.objects.filter(key=idempotency_key).first()
         # check if there was an order attempt
@@ -153,7 +165,12 @@ class CheckoutView(APIView):
             if payment and payment.is_processed:
                 # payment is processed return data
                 response_data['payment'] = PaymentSerializer(payment).data
-            return Response(response_data, status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data=response_data,
+                message="Payment order already created",
+                status_code=status.HTTP_200_OK
+            )
 
         # continue with order
         try:
@@ -164,9 +181,12 @@ class CheckoutView(APIView):
             items = cart.items.all()
         
             if not items.exists():
-                return Response(
-                    {"detail": "Cart is empty. Please add items before checkout."},
-                    status=status.HTTP_400_BAD_REQUEST
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Cart is empty",
+                    message="Cart is empty. Please add items before checkout.",
+                    status_code=status.HTTP_400_BAD_REQUEST
                 )
             
             # Create order first (outside of payment transaction)
@@ -235,17 +255,28 @@ class CheckoutView(APIView):
                 response_data['payment'] = PaymentSerializer(payment).data
                 response_data['payment_url'] = data['data']['authorization_url']
 
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            return api_response(
+                success=True,
+                data=response_data,
+                message="Checkout completed successfully",
+                status_code=status.HTTP_201_CREATED
+            )
             
         except Cart.DoesNotExist:
-            return Response(
-                {"detail": "Cart not found"},
-                status=status.HTTP_404_NOT_FOUND
+            return api_response(
+                success=False,
+                data=None,
+                error="Cart not found",
+                message="Cart not found for user",
+                status_code=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error during checkout",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
              
@@ -262,12 +293,30 @@ class AddToCartView(APIView):
         try:
             product = Product.objects.get(pk=product_pk)
         except Product.DoesNotExist:
-            return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+            return api_response(
+                success=False,
+                data=None,
+                error="Product not found",
+                message="Product with the given ID does not exist",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving product",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         if product.stock < 1:
-            return Response({'error': 'Product is out of stock'}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Out of stock",
+                message="Product is out of stock",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         # check if the cart item is already created in the cart
         cart_item, created = CartItem.objects.get_or_create(
@@ -279,11 +328,22 @@ class AddToCartView(APIView):
         # if the cart item already exists
         if not created:
             if product.stock < cart_item.quantity + 1:
-                return Response({'error': 'Insufficient stock'}, status=status.HTTP_400_BAD_REQUEST)
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Insufficient stock",
+                    message="Not enough stock available for this product",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
             cart_item.quantity += 1
             cart_item.save()
         
         serializer = CartItemSerializer(cart_item)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Product added to cart successfully",
+            status_code=status.HTTP_200_OK
+        )
        
 
