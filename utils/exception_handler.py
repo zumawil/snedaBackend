@@ -1,6 +1,7 @@
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
 from rest_framework import status as http_status
+from .normalize_errors import normalize_errors
 
 
 def custom_exception_handler(exc, context):
@@ -34,9 +35,18 @@ def custom_exception_handler(exc, context):
             message = error_detail['detail']
             error = error_detail
         else:
-            # For field validation errors
+            # For field validation errors - normalize them for better readability
             message = "Validation failed"
-            error = error_detail
+            # Use normalize_errors to flatten nested validation errors
+            try:
+                normalized_errors = normalize_errors(error_detail)
+                if normalized_errors:
+                    error = normalized_errors
+                else:
+                    error = error_detail
+            except Exception:
+                # If normalization fails, use original error
+                error = error_detail
     elif isinstance(error_detail, list):
         message = error_detail[0] if error_detail else "Request failed"
         error = error_detail

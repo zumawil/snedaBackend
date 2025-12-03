@@ -44,6 +44,34 @@ class ReviewListCreateView(ListCreateAPIView):
 
         # Save review with user and product
         serializer.save(user=user, product=product)
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Reviews retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Review created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     
 class ReviewDetailView(RetrieveDestroyAPIView):
@@ -52,4 +80,24 @@ class ReviewDetailView(RetrieveDestroyAPIView):
 
     def get_queryset(self):
         return Reviews.objects.filter(user=self.request.user)
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Review retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return api_response(
+            success=True,
+            data=None,
+            message="Review deleted successfully",
+            status_code=status.HTTP_204_NO_CONTENT
+        )
     

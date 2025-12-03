@@ -1,0 +1,4 @@
+[2025-12-03 15:22:49,029] [ERROR] django.request - Internal Server Error: /users/login/
+[2025-12-03 15:22:49,030] [ERROR] django.server - "POST /users/login/ HTTP/1.1" 500 136
+[2025-12-03 15:52:44,373] [ERROR] django.request - Internal Server Error: /categories/1/
+[2025-12-03 15:52:44,374] [ERROR] django.server - "PUT /categories/1/ HTTP/1.1" 500 126
