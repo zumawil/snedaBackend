@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Payment
-from .serializers import PaymentSerializer
+from .serializers import PaymentSerializer, PaymentRetrySerializer
 from orders.models import Order
 from users.permissions import IsVerifiedUser
 from orders.serailizer import OrderSerializer
@@ -18,6 +18,7 @@ import json
 from carts.views import to_pesewas, bill_user
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from utils.apiResponse import api_response
 
 load_dotenv()
 
@@ -40,14 +41,30 @@ class PaymentView(APIView):
                 # Get specific payment
                 payment = get_object_or_404(Payment, pk=pk, order__user=request.user)
                 serializer = PaymentSerializer(payment)
-                return Response(serializer.data, status=status.HTTP_200_OK)
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Payment retrieved successfully",
+                    status_code=status.HTTP_200_OK
+                )
             else:
                 # List all payments for user
                 payments = Payment.objects.filter(order__user=request.user)
                 serializer = PaymentSerializer(payments, many=True)
-                return Response(serializer.data, status=status.HTTP_200_OK)
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Payments retrieved successfully",
+                    status_code=status.HTTP_200_OK
+                )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving payments",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
    
 class GetPaymentByOrder(APIView):
@@ -59,11 +76,28 @@ class GetPaymentByOrder(APIView):
         try:
             payment = Payment.objects.get(order_id=order_id, order__user=request.user)
             serializer = PaymentSerializer(payment)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Payment for order retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
         except Payment.DoesNotExist:
-            return Response({'error': 'Payment not found'}, status=status.HTTP_404_NOT_FOUND)
+            return api_response(
+                success=False,
+                data=None,
+                error="Payment not found",
+                message="Payment not found for this order",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving payment",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     """
         initialize payment for failed payment t checkout
@@ -84,17 +118,34 @@ class GetPaymentByOrder(APIView):
                     status='pending',
                     paystack_reference=data['data']['reference']
                 )
-                data = {
+                response_data = {
                     'order': OrderSerializer(order).data,
                     'payment_url':data.get('data').get('authorization_url'),
                 }
            
-                return Response(data, status=status.HTTP_200_OK)
+                return api_response(
+                    success=True,
+                    data=response_data,
+                    message="Payment initialized successfully",
+                    status_code=status.HTTP_200_OK
+                )
             else:
-                return Response({'error': 'Payment failed try again'}, status=status.HTTP_400_BAD_REQUEST)
+                return api_response(
+                success=False,
+                data=None,
+                error="Payment failed",
+                message="Payment failed, please try again",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
            
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error initializing payment",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
             
 def verify_payment(reference):
@@ -154,17 +205,31 @@ class PaymentCallback(APIView):
         reference = request.query_params.get('reference')
         
         if not reference:
-            return Response(
-                {'error': 'Reference parameter is required'},
-                status=status.HTTP_400_BAD_REQUEST
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing reference",
+                message="Reference parameter is required",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
         
         success, message = verify_payment(reference)
         
         if success:
-            return Response({'detail': message}, status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data=None,
+                message=message,
+                status_code=status.HTTP_200_OK
+            )
         else:
-            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error=message,
+                message="Payment verification failed",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 @method_decorator(csrf_exempt, name='dispatch')
 class WebhookView(APIView):
@@ -177,7 +242,13 @@ class WebhookView(APIView):
         # 1. Verify signature
         signature = request.headers.get('x-paystack-signature', None)
         if not signature:
-            return Response({"error": "Missing signature"}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing signature",
+                message="Webhook signature is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         secret = os.getenv('PAYSTACK_SECRET_KEY').encode('utf-8')
         payload = request.body
@@ -186,7 +257,13 @@ class WebhookView(APIView):
         verified = hmac.compare_digest(computed_hash, signature)
 
         if not verified:
-            return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
+            return api_response(
+                success=False,
+                data=None,
+                error="Invalid signature",
+                message="Webhook signature verification failed",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
 
         # 2. Handle events
         event = request.data.get('event')
@@ -254,7 +331,12 @@ class WebhookView(APIView):
             except Payment.DoesNotExist:
                 print(f"Abandoned payment with reference {reference} not found")
         # respond 200 to Paystack
-        return Response(status=status.HTTP_200_OK)
+        return api_response(
+            success=True,
+            data=None,
+            message="Webhook processed successfully",
+            status_code=status.HTTP_200_OK
+        )
     
 
     def update_product_stock(self, order):

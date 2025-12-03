@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import authentication, permissions, status
 from django.contrib.auth import get_user_model
-from .serializers import UserSerializer
+from .serializers import UserSerializer, UserCreateSerializer, UserProfileUpdateSerializer
 from django.conf import settings
 
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -21,6 +21,7 @@ from django.core.mail import send_mail
 
 from dotenv import load_dotenv
 import os
+from utils.apiResponse import api_response
 
 load_dotenv()
 
@@ -60,12 +61,23 @@ class VerifyOTPView(APIView):
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            return api_response(
+                success=False,
+                data=None,
+                error="User not found",
+                message="User with this email does not exist",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
 
         if verify_user_otp(user, otp_input):
             refresh = RefreshToken.for_user(user)
 
-            response = Response({"message": "User verified successfully"}, status=status.HTTP_200_OK)
+            response = api_response(
+                success=True,
+                data=None,
+                message="User verified successfully",
+                status_code=status.HTTP_200_OK
+            )
 
             response.set_cookie(
                 "access",
@@ -88,27 +100,43 @@ class VerifyOTPView(APIView):
 
             return response
         else:
-            return Response({"error": "Invalid or expired OTP"}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Invalid OTP",
+                message="Invalid or expired OTP code",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 class SignupUser(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
+        serializer = UserCreateSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
 
-
             send_otp_to_user(user)
 
-            return Response({"message": "User created successfully"}, status=status.HTTP_201_CREATED)
+            return api_response(
+                success=True,
+                data=None,
+                message="User created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
         else:
-            return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Validation failed",
+                message="User creation failed",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 # only accessible to security managers
 
-
+# chnaged it ancestor to return general response  (TokenViewBase)
 class CookieJWTLoginView(TokenObtainPairView):
     # serializer_class = MyTokenObtainPairSerializer
     
@@ -127,6 +155,7 @@ class CookieJWTLoginView(TokenObtainPairView):
         response.data.pop("access", None)
         response.data.pop("refresh", None)
 
+        # set access token in cookies
         response.set_cookie(
             "access",
             access_token,
@@ -136,6 +165,7 @@ class CookieJWTLoginView(TokenObtainPairView):
             max_age=900,
             path="/",
         )
+         # set refresh token in cookies
         response.set_cookie(
             "refresh",
             refresh_token,
@@ -145,6 +175,7 @@ class CookieJWTLoginView(TokenObtainPairView):
             max_age=604800,
             path="/",
         )
+
 
         # For Swagger compatibility, include tokens in response if requested
         if request.GET.get('include_tokens') == 'true':
@@ -166,7 +197,13 @@ class CookieTokenRefreshView(TokenRefreshView):
         try:
             response = super().post(request, *args, **kwargs)
         except InvalidToken:
-            return Response({"detail": "Invalid refresh token."}, status=status.HTTP_401_UNAUTHORIZED)
+            return api_response(
+                success=False,
+                data=None,
+                error="Invalid refresh token",
+                message="Invalid refresh token",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
 
         data = response.data
         access_token = data.get('access')
@@ -192,7 +229,12 @@ class GetUsersView(APIView):
     def get(self, request):
         users = get_user_model().objects.all()
         serializer = UserSerializer(users, many=True)
-        return Response({"users": serializer.data}, status=status.HTTP_200_OK)
+        return api_response(
+            success=True,
+            data={"users": serializer.data},
+            message="Users retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
 
 @ensure_csrf_cookie
 def get_csrf(request):
@@ -204,7 +246,12 @@ class UserProfileView(APIView):
     def get(self, request):
         user = request.user
         serializer = UserSerializer(user)
-        return Response({"user": serializer.data}, status=status.HTTP_200_OK)
+        return api_response(
+            success=True,
+            data={"user": serializer.data},
+            message="User profile retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
 
     def put(self, request):
         data = request.data
@@ -212,34 +259,70 @@ class UserProfileView(APIView):
         serializer = UserSerializer(user, data=data)
         if serializer.is_valid():
             serializer.save()
-            return Response({"user": serializer.data}, status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data={"user": serializer.data},
+                message="User profile updated successfully",
+                status_code=status.HTTP_200_OK
+            )
         else:
-            return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Validation failed",
+                message="Invalid user data",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
     def patch(self, request):
         data = request.data # get data coming from the request
         user = request.user # get the user from the request
-        serializer = UserSerializer(user, data=data, partial=True)
+        serializer = UserProfileUpdateSerializer(user, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response({"user": serializer.data}, status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data={"user": serializer.data},
+                message="User profile updated successfully",
+                status_code=status.HTTP_200_OK
+            )
         else:
-            return Response({"errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Validation failed",
+                message="Invalid user data",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
     
     def delete(self, request):
         user = request.user
         user.delete()
-        return Response({"message": "User deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        return api_response(
+            success=True,
+            data=None,
+            message="User deleted successfully",
+            status_code=status.HTTP_204_NO_CONTENT
+        )
 
 class LogoutUserView(APIView):
     permission_classes = [IsVerifiedUser]
 
     def post(self, request):
-        response = Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
+        response = api_response(
+            success=True,
+            data=None,
+            message="Logged out successfully",
+            status_code=status.HTTP_200_OK
+        )
         response.delete_cookie('access')
         response.delete_cookie('refresh')
         response.delete_cookie('role')
-        return response
+        return api_response(
+            success=True,
+            message='logged out successfully',
+            status_code=status.HTTP_200_OK
+        )
 
 
 from django.utils.encoding import force_bytes
@@ -279,29 +362,37 @@ class ChangePasswordRequestView(APIView):
         try:
             user = CustomUser.objects.get(email=email)
         except CustomUser.DoesNotExist:
-            return Response({'detail': 'User with this email does not exist'}, status=404)
-        
-        if user:
-            ## generate user uid
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            ## generate the token for the url
-            token = TokenGenerator()
-            url_token = token.get_url_safe_bytes()
-            
-            token.store_password_token(user.pk) # 15 min
-
-            app_url = os.environ.get("APP_URL", "http://localhost:3000")
-            password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={url_token}"
-            send_mail(
-                "You requested for a password chnage",
-                f"your password reset link is {password_reset_url} \n link is valid for 15 minutes",
-                "noreply@yourapp.com",
-                [user.email],
+            return api_response(
+                success=False,
+                data=None,
+                error="User not found",
+                message="User with this email does not exist",
+                status_code=status.HTTP_404_NOT_FOUND
             )
+        
+        ## generate user uid
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        ## generate the token for the url
+        token = TokenGenerator()
+        url_token = token.get_url_safe_bytes()
+        
+        token.store_password_token(user.pk) # 15 min
 
-        return Response({'message': 'Password reset link has been sent to your email', 
-        'link': password_reset_url},
-                        status=status.HTTP_202_ACCEPTED)
+        app_url = os.environ.get("APP_URL", "http://localhost:3000")
+        password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={url_token}"
+        send_mail(
+            "You requested for a password chnage",
+            f"your password reset link is {password_reset_url} \n link is valid for 15 minutes",
+            "noreply@yourapp.com",
+            [user.email],
+        )
+
+        return api_response(
+            success=True,
+            data={'link': password_reset_url},
+            message='Password reset link has been sent to your email',
+            status_code=status.HTTP_202_ACCEPTED
+        )
 
 class ResetPasswordConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -316,12 +407,20 @@ class ResetPasswordConfirmView(APIView):
         is_token_valid = TokenGenerator.check_token(user.id, token)
         
         if is_token_valid:
-            return Response({'token':token, 
-            'uid':uid, 'detail':'token is valid'},
-            status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data={'token': token, 'uid': uid},
+                message='Token is valid',
+                status_code=status.HTTP_200_OK
+            )
         else:
-            return Response({'detail':'invalid or expired token'},
-            status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error='Invalid token',
+                message='Invalid or expired token',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 class ResetPasswordView(APIView):   
     permission_classes = [permissions.AllowAny]
@@ -336,20 +435,40 @@ class ResetPasswordView(APIView):
         try:
             user = get_object_or_404(CustomUser, pk=user_id)
         except CustomUser.DoesNotExist():
-            return Response({'detail':'user account not found'}, 
-            status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="User not found",
+                message="User account not found",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         if not TokenGenerator.check_token(user_id, token):
-            return Response({'detail': 'Invalid or expired token'}, status=400)
+            return api_response(
+                success=False,
+                data=None,
+                error="Invalid token",
+                message="Invalid or expired token",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         if new_password == confirm_password and new_password and confirm_password:
             user.set_password(new_password)
             user.save()
-            return Response({'detail':'password reset successful'}, 
-            status=status.HTTP_200_OK)
+            return api_response(
+                success=True,
+                data=None,
+                message="Password reset successful",
+                status_code=status.HTTP_200_OK
+            )
         else:
-            return Response({'detail':'password reset failed'}, 
-            status=status.HTTP_400_BAD_REQUEST)
+            return api_response(
+                success=False,
+                data=None,
+                error="Password mismatch",
+                message="Passwords do not match or are empty",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 class GetUserSession(APIView):
 
@@ -360,4 +479,9 @@ class GetUserSession(APIView):
         session_count += 1
         request.session['count'] = session_count
         session_data = request.session.items()
-        return Response({"session_data": dict(session_data)}, status=status.HTTP_200_OK)
+        return api_response(
+            success=True,
+            data={"session_data": dict(session_data)},
+            message="Session data retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
