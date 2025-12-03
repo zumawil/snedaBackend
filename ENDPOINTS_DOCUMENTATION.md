@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-12-02
+**Last Updated:** 2025-12-03
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 
 ---
@@ -410,4 +410,55 @@ order.save()
 - **Test Coverage**: All 14 stock management tests now pass ✅
 - **Files Modified**: 
   - `carts/views.py` - Updated CheckoutView transaction management
+
+## 🆕 Recent Enhancements (2025-12-03)
+
+**ENHANCED: API Response Standardization**
+- **Added**: `api_response` utility function for consistent response formatting across all endpoints
+- **Added**: Error normalization feature that flattens complex nested validation errors into readable format
+- **Added**: Custom exception handler for automatic error formatting
+- **Added**: Base generic views for consistent response handling in new endpoints
+
+**Updated Response Format:**
+All endpoints now return a standardized format:
+```json
+{
+    "success": true|false,
+    "data": {object}|{array}|null,
+    "message": "Human-readable message",
+    "error": {array}|null
+}
+```
+
+**Enhanced Error Handling:**
+Validation errors are now automatically flattened for better readability:
+```json
+{
+    "success": false,
+    "error": [
+        {"field": "billing.street.0", "message": "This field is required"},
+        {"field": "shipping.different_address", "message": "Must be true"}
+    ]
+}
+```
+
+**Views Enhanced:**
+- **Products App**: All generic views (Category, Product, ProductImage) now use standardized responses
+- **Carts App**: CartItem generic views now use standardized responses  
+- **Reviews App**: Review generic views now use standardized responses
+
+**Benefits:**
+- Consistent API behavior across all endpoints
+- Better error messages for frontend developers
+- Automatic error normalization without code changes
+- Improved developer experience with standardized responses
+
+**Files Modified:**
+- `utils/apiResponse.py` - Enhanced with automatic error normalization
+- `utils/exception_handler.py` - Enhanced with error normalization for DRF exceptions
+- `utils/generic_views.py` - Created base classes for consistent response handling
+- `API_RESPONSE_GUIDE.md` - Complete documentation for new features
+- `products/views.py` - Updated all generic views to use standardized responses
+- `carts/views.py` - Updated generic views to use standardized responses
+- `reviews/views.py` - Updated generic views to use standardized responses
   - `carts/tests/test_stock_management.py` - Fixed test to handle missing payment objects

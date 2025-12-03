@@ -2,6 +2,20 @@
 
 This document explains how to use the standardized API response utilities in the e-commerce project.
 
+## Recent Updates (December 3, 2025)
+
+### Major Changes Made:
+1. **Updated All Generic Views** to use `api_response` utility
+2. **Integrated Error Normalization** with `api_response` function
+3. **Enhanced Exception Handler** with automatic error normalization
+4. **Created Base Generic Views** for consistent response handling
+5. **Comprehensive Documentation** with examples and best practices
+
+### Views Updated:
+- **Products App**: All generic views (Category, Product, ProductImage)
+- **Carts App**: CartItem generic views
+- **Reviews App**: Review generic views
+
 ## Overview
 
 The project uses a standardized response format across all API endpoints to ensure consistency:
