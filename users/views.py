@@ -118,12 +118,6 @@ class CookieJWTLoginView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         user_email = request.data.get("email", None)
         user = CustomUser.objects.get(email=user_email)
-
-        group = user.groups.first()
-        if group is not None:
-            role = group.name
-        else:
-            role = "no-role"
         
         response = super().post(request, *args, **kwargs)
         data = response.data
@@ -132,7 +126,6 @@ class CookieJWTLoginView(TokenObtainPairView):
 
         response.data.pop("access", None)
         response.data.pop("refresh", None)
-
 
         response.set_cookie(
             "access",
@@ -149,14 +142,6 @@ class CookieJWTLoginView(TokenObtainPairView):
             httponly=True,
             secure=not settings.DEBUG,
             samesite="Lax",
-            max_age=604800,
-            path="/",
-        )
-
-        response.set_cookie(
-            "role",
-            role,
-            httponly=False,
             max_age=604800,
             path="/",
         )
