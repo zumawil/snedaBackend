@@ -160,7 +160,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES" : (
         "users.authentication.CookieJWTAuthentication",
-    )
+    ),
+    "EXCEPTION_HANDLER": "utils.exception_handler.custom_exception_handler",  
 }
 # JWT SETTINGS
 SIMPLE_JWT = {
