@@ -140,3 +140,4 @@ class CreateNotificationView(APIView):
                 message="User not found",
                 status_code=status.HTTP_404_NOT_FOUND
             )
+

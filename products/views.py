@@ -44,6 +44,14 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CategorySerializer
     permission_classes = [ IsVerifiedUser]
 
+    def get(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Category retrieved successfully"
+        )
 
 class ProductImageListView(generics.ListCreateAPIView):
     """
@@ -64,10 +72,13 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     PUT/PATCH: Update product image.
     DELETE: Delete product image.
     """
-    permission_classes = [ IsVerifiedUser]
-
-    serializer_class = ProductImageSerializer
+    permission_classes = [IsVerifiedUser]
     queryset = ProductImage.objects.all()
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ProductImageCreateSerializer
+        return ProductImageSerializer
 
 class ProductListCreateView(generics.ListCreateAPIView):
     """
@@ -76,10 +87,13 @@ class ProductListCreateView(generics.ListCreateAPIView):
     GET: Retrieve a list of all products with their images.
     POST: Create a new product (requires name, category, description, price, stock).
     """
-    permission_classes = [ IsVerifiedUser]
-
+    permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
-    serializer_class = ProductSerializer
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ProductCreateUpdateSerializer
+        return ProductSerializer
 
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -90,9 +104,13 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     PUT/PATCH: Update product (Admin and Verified User required).
     DELETE: Delete product (Admin and Verified User required).
     """
-    permission_classes = [ IsVerifiedUser]
+    permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
-    serializer_class = ProductSerializer
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ProductCreateUpdateSerializer
+        return ProductSerializer
 
 
 class GetProductReviewsView(APIView):

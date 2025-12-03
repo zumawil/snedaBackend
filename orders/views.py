@@ -1,6 +1,9 @@
 import logging
 from django.shortcuts import render
-from .serailizer import OrderItemSerializer, OrderSerializer
+from .serailizer import (
+    OrderItemSerializer, OrderItemCreateSerializer, OrderItemUpdateSerializer,
+    OrderSerializer, OrderStatusUpdateSerializer
+)
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.views import APIView
@@ -105,7 +108,7 @@ class OrderItemView(APIView):
             )
 
     def post(self, request):
-        serializer = OrderItemSerializer(data=request.data)
+        serializer = OrderItemCreateSerializer(data=request.data)
         if serializer.is_valid():
             # Ensure the order belongs to the user
             order = serializer.validated_data['order']
@@ -135,7 +138,7 @@ class OrderItemView(APIView):
     def put(self, request, pk):
         try:
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
-            serializer = OrderItemSerializer(order_item, data=request.data)
+            serializer = OrderItemUpdateSerializer(order_item, data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return api_response(
@@ -194,27 +197,18 @@ class OrderUpdateStatusView(APIView):
             # Admin can update any order, so we don't filter by user
             order = get_object_or_404(Order, pk=pk)
             
-            # Only allow status field to be updated
-            new_status = request.data.get('status')
-            if not new_status:
+            # Use serializer for validation
+            serializer = OrderStatusUpdateSerializer(data=request.data)
+            if not serializer.is_valid():
                 return api_response(
                     success=False,
                     data=None,
-                    error="Missing status",
-                    message="Status field is required",
+                    error="Validation failed",
+                    message=serializer.errors,
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Validate status choice
-            valid_statuses = ['pending', 'shipped', 'delivered', 'cancelled']
-            if new_status not in valid_statuses:
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Invalid status",
-                    message=f'Invalid status. Must be one of: {", ".join(valid_statuses)}',
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
+            new_status = serializer.validated_data['status']
             
             # Update shipping.status (Shipping is the source of truth for order state)
             if hasattr(order, 'shipping') and order.shipping:

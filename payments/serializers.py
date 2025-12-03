@@ -8,3 +8,18 @@ class PaymentSerializer(serializers.ModelSerializer):
                 'amount', 'method', 'status', 'transaction_id',
                 'date_created', 'paystack_reference']
         read_only_fields = ['id', 'date_created', 'paystack_reference']
+
+class PaymentRetrySerializer(serializers.Serializer):
+    """Serializer for payment retry requests with proper OpenAPI schema documentation"""
+    order_id = serializers.IntegerField(help_text="ID of the order to retry payment for")
+    
+    def validate_order_id(self, value):
+        from orders.models import Order
+        try:
+            order = Order.objects.get(id=value)
+            # Check if order belongs to user
+            if order.user != self.context['request'].user:
+                raise serializers.ValidationError("You can only retry payments for your own orders.")
+            return value
+        except Order.DoesNotExist:
+            raise serializers.ValidationError("Order not found.")

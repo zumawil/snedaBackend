@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import authentication, permissions, status
 from django.contrib.auth import get_user_model
-from .serializers import UserSerializer
+from .serializers import UserSerializer, UserCreateSerializer, UserProfileUpdateSerializer
 from django.conf import settings
 
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -113,10 +113,9 @@ class SignupUser(APIView):
     authentication_classes = []
 
     def post(self, request):
-        serializer = UserSerializer(data=request.data)
+        serializer = UserCreateSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-
 
             send_otp_to_user(user)
 
@@ -137,7 +136,7 @@ class SignupUser(APIView):
 
 # only accessible to security managers
 
-
+# chnaged it ancestor to return general response  (TokenViewBase)
 class CookieJWTLoginView(TokenObtainPairView):
     # serializer_class = MyTokenObtainPairSerializer
     
@@ -156,7 +155,7 @@ class CookieJWTLoginView(TokenObtainPairView):
         response.data.pop("access", None)
         response.data.pop("refresh", None)
 
-
+        # set access token in cookies
         response.set_cookie(
             "access",
             access_token,
@@ -166,6 +165,7 @@ class CookieJWTLoginView(TokenObtainPairView):
             max_age=900,
             path="/",
         )
+         # set refresh token in cookies
         response.set_cookie(
             "refresh",
             refresh_token,
@@ -182,7 +182,7 @@ class CookieJWTLoginView(TokenObtainPairView):
             response.data['access'] = access_token
             response.data['refresh'] = refresh_token
 
-        return Response ({})
+        return response
 
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -277,7 +277,7 @@ class UserProfileView(APIView):
     def patch(self, request):
         data = request.data # get data coming from the request
         user = request.user # get the user from the request
-        serializer = UserSerializer(user, data=data, partial=True)
+        serializer = UserProfileUpdateSerializer(user, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return api_response(

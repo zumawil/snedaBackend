@@ -1,79 +1,92 @@
-# 🚀 Next Steps - Sneda Ecommerce API
+# 🚀 Next Steps - Sneda Ecommerce API Production Roadmap
 
-**Last Updated:** 2025-11-27
-**Status:** Payment system and stock management fully optimized! All critical issues resolved.
-
----
-
-## 📋 Quick Summary
-
-- ✅ **COMPLETED** - Payment system fully functional with all improvements
-- ✅ **COMPLETED** - Webhook error handling and abandoned payment support
-- ✅ **COMPLETED** - Security improvements (permission classes, user authorization)
-- ✅ **COMPLETED** - Amount conversion bug fixed
-- 🎯 **2 feature areas** remaining (shipping partially, notifications)
-- 🛠️ **Checkout hardening** completed - payment system production-ready
+**Last Updated:** 2025-12-03
+**Status:** Core features (Auth, Products, Cart, Orders, Payments) complete. Transitioning to **Production Hardening**.
 
 ---
 
-## ⏭️ Pending Tasks (Immediate Priority)
+## 🛑 Phase 1: Production Hardening (Critical)
+*Must be completed before public deployment.*
 
-### ✅ COMPLETED - Payment System (2025-11-27)
-- ✅ **FIXED** - Removed duplicate payment creation logic
-- ✅ **FIXED** - Amount conversion bug (cedis vs pesewas)
-- ✅ **FIXED** - Consistent bill_user() usage
-- ✅ **ADDED** - Permission classes and user authorization
-- ✅ **FIXED** - Webhook secret key validation
-- ✅ **ADDED** - Abandoned payment webhook handler
-- ✅ **IMPROVED** - Removed unnecessary force_update
-- ✅ **ADDED** - Payment retry endpoint for failed checkouts
+### 1. Security & Configuration
+- [ ] **Environment Variables**: Ensure all secrets (SECRET_KEY, DB credentials, API keys) are strictly loaded from env vars.
+- [ ] **HTTPS/SSL**:
+    - [ ] Set `SECURE_SSL_REDIRECT = True`
+    - [ ] Set `SECURE_HSTS_SECONDS`, `SECURE_HSTS_INCLUDE_SUBDOMAINS`, `SECURE_HSTS_PRELOAD`
+    - [ ] Ensure `SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` are `True`
+- [ ] **Allowed Hosts**: Configure `ALLOWED_HOSTS` for the production domain.
+- [ ] **CORS**: Restrict `CORS_ALLOWED_ORIGINS` to the specific frontend domain(s).
 
-### ✅ COMPLETED - Stock Management Tests (2025-11-27)
-- ✅ **FIXED** - Payment failure stock restoration by separating transactions
-- ✅ **FIXED** - All 14 stock management tests now pass
-- ✅ **IMPROVED** - Stock reservation preserved even when payment fails
-- ✅ **ENHANCED** - Test coverage for payment failure scenarios
+### 2. Database & Static Files
+- [ ] **Database**: Migrate from SQLite to **PostgreSQL** for production reliability and concurrency.
+- [ ] **Static Files**:
+    - [ ] Configure `STATIC_ROOT`
+    - [ ] Set up WhiteNoise or S3/CloudFront for serving static and media files.
 
-### 1. Shipping Management (Low Priority - Partially Implemented)
-- Addresses CRUD and additional tracking features
+### 3. Logging & Error Tracking
+- [ ] **Logging**: Configure `LOGGING` in `settings.py` to capture errors, warnings, and critical info (file or console).
+- [ ] **Error Monitoring**: Integrate **Sentry** for real-time error tracking and performance monitoring.
 
-### 2. Notifications System (Low Priority)
-- List, mark read, mark all read, delete
-
----
-
-## 🛠️ Recommended Immediate Checklist (Pending)
-- [x] **COMPLETED** - Payment webhook status update issue resolved
-- [ ] Create and run a migration to drop `Order.status` from the database once code is fully migrated; include a backfill RunPython migration if you need to preserve historical status values.
-- [ ] Return 4xx errors for expected failures (e.g., 409 Conflict for stock races) and avoid 500 for expected conditions
-- [ ] Add unit/integration tests for concurrent checkout and stock validation
-- [ ] Add logging/metrics for checkout failures and stock update conflicts
-- [ ] Create a short migration plan if you add a CheckoutAttempt/draft Order model
+### 4. Email Backend
+- [ ] Replace `ConsoleEmailBackend` with a real SMTP provider (e.g., SendGrid, AWS SES, Mailgun) for password resets and notifications.
 
 ---
 
-## 📝 Notes
-- Require auth for non-public endpoints; consider RBAC
-- Add tests as you implement each feature
-- Update Swagger/Redoc examples with real payloads
-- Use consistent error response format
+## 🏗️ Phase 2: Feature Completion
+*Remaining functional requirements.*
+
+### 1. Shipping Management (Priority: Medium)
+- [ ] **CRUD Endpoints**: Implement full Create, Read, Update, Delete for shipping addresses/methods.
+- [ ] **Tracking**: Enhance tracking logic (integrate with external carrier APIs if needed).
+
+### 2. Notifications System (Priority: Low)
+- [ ] **Endpoints**:
+    - [ ] List notifications
+    - [ ] Mark as read/unread
+    - [ ] Delete notifications
+- [ ] **Triggers**: Ensure notifications are triggered on Order Status Change, Payment Success/Failure.
 
 ---
 
-## 🎯 Recommended Implementation Order
-1) Shipping (Low)
-2) Notifications (Low)
+## ⚡ Phase 3: Performance & Scalability
+*Optimizations for high traffic.*
+
+### 1. Caching
+- [ ] **Redis**: Set up Redis as the caching backend.
+- [ ] **View Caching**: Cache public, read-heavy endpoints (e.g., Product Lists, Categories).
+- [ ] **Database Caching**: Use `select_related` and `prefetch_related` to optimize queries (audit existing views).
+
+### 2. Throttling & Rate Limiting
+- [ ] **DRF Throttling**: Configure `DEFAULT_THROTTLE_CLASSES` and `DEFAULT_THROTTLE_RATES` to prevent abuse (e.g., Anon: 100/day, User: 1000/day).
+
+### 3. Asynchronous Tasks
+- [ ] **Celery + Redis**: Move blocking tasks to background workers:
+    - [ ] Sending emails
+    - [ ] Processing image uploads/resizing
+    - [ ] Heavy report generation
 
 ---
 
-## 📝 Checklist Template
+## 🧪 Phase 4: Reliability & Testing
+*Ensuring stability.*
+
+### 1. Testing
+- [ ] **Concurrency Tests**: Add tests for race conditions (stock management, coupon usage).
+- [ ] **Integration Tests**: Verify full flows (Checkout -> Payment -> Order -> Shipping).
+- [ ] **CI/CD**: Set up GitHub Actions for automated testing and linting on push.
+
+### 2. Documentation
+- [ ] **API Docs**: Ensure Swagger/Redoc examples match actual production payloads.
+- [ ] **Deployment Guide**: Document steps for deploying to the production server (Docker, Gunicorn, Nginx).
+
+---
+
+## 📝 Checklist Template for New Features
 - [ ] Create/update view class
-- [ ] Create/update serializer (if needed)
+- [ ] Create/update serializer
 - [ ] Add URL route
 - [ ] Add authentication/permissions
-- [ ] Add input validation
-- [ ] Add error handling
-- [ ] Write tests
-- [ ] Update documentation
-- [ ] Test manually
-- [ ] Deploy to staging
+- [ ] **Add Throttling** (if sensitive)
+- [ ] **Add Logging**
+- [ ] Write Tests
+- [ ] Update Documentation

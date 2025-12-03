@@ -14,6 +14,30 @@ class OrderItemSerializer(serializers.ModelSerializer):
     def get_total_price(self, obj):
         return obj.get_total_price()
 
+class OrderItemCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating order items with proper OpenAPI schema documentation"""
+    
+    class Meta:
+        model = OrderItem
+        fields = ['order', 'product', 'quantity']
+        
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1.")
+        return value
+
+class OrderItemUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating order items with proper OpenAPI schema documentation"""
+    
+    class Meta:
+        model = OrderItem
+        fields = ['quantity']
+        
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1.")
+        return value
+
 class OrderSerializer(serializers.ModelSerializer):
     # user = UserSerializer(read_only=True)
     items =  OrderItemSerializer(many=True, read_only=True)
@@ -26,4 +50,11 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_status(self, obj):
         # expose the effective status derived from shipping when present
         return obj.effective_status
+
+class OrderStatusUpdateSerializer(serializers.Serializer):
+    """Serializer for updating order status with proper OpenAPI schema documentation"""
+    status = serializers.ChoiceField(
+        choices=['pending', 'shipped', 'delivered', 'cancelled'],
+        help_text="New order status"
+    )
 

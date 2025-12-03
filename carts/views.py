@@ -3,7 +3,10 @@ from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import CartItem, Cart
-from .serializer import CartItemSerializer, CartSerializer
+from .serializer import (
+    CartItemSerializer, CartItemCreateSerializer,
+    CartSerializer, CheckoutSerializer, CheckoutResponseSerializer
+)
 from orders.serailizer import OrderSerializer
 from rest_framework import status
 from django.shortcuts import get_object_or_404
@@ -90,7 +93,7 @@ def bill_user(amount, email):
 
     return response.json()
 
-
+#  get user cart
 class CartView(APIView):
 
     permission_classes = [IsVerifiedUser]
@@ -117,12 +120,16 @@ class CartView(APIView):
 class CartItemListCreateView(generics.ListCreateAPIView):
 
     permission_classes = [IsVerifiedUser]
-    serializer_class = CartItemSerializer
 
     def get_queryset(self):
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         return cart.items.all()
-    # create the cartItem for the user cart
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return CartItemCreateSerializer
+        return CartItemSerializer
+        
     def perform_create(self, serializer):
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         serializer.save(cart=cart)
@@ -327,6 +334,11 @@ class AddToCartView(APIView):
         
         # if the cart item already exists
         if not created:
+            '''
+                 It compares the total available stock of the product 
+                 against the new quantity the user would have if this 
+                 add operation succeeds.
+            '''
             if product.stock < cart_item.quantity + 1:
                 return api_response(
                     success=False,
@@ -347,3 +359,77 @@ class AddToCartView(APIView):
         )
        
 
+class RemoveProductFromCartView(APIView):
+
+    def post(self, request, product_pk):
+        try:
+            cart = Cart.objects.get(user=request.user)
+            # get the product in the cart item
+            cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
+            cart_item.delete()
+
+            return api_response(
+                success=True,
+                data=None,
+                message="Product removed from cart successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except CartItem.DoesNotExist:
+            return api_response(
+                success=False,
+                data=None,
+                error="Product not found in cart",
+                message="Product with the given ID does not exist in the cart",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+# decrement product quantity in cart
+class DecreMentProductQuantityInCartView(APIView):
+    def post(self, request, product_pk):
+        try:
+            cart = Cart.objects.get(user=request.user)
+            # get the product in the cart item
+            cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
+            
+            # remove the cart item from the cart if the quantity is 1
+            if cart_item.quantity <= 1:
+                cart_item.delete()
+            else:
+                cart_item.quantity -= 1
+                cart_item.save()
+
+            return api_response(
+                success=True,
+                data=None,
+                message="Product quantity decremented successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except CartItem.DoesNotExist:
+            return api_response(
+                success=False,
+                data=None,
+                error="Product not found in cart",
+                message="Product with the given ID does not exist in the cart",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+# clear all cart
+class ClearCartView(APIView):
+    def post(self, request):
+        try:
+            cart = Cart.objects.get(user=request.user)
+            cart.items.all().delete()
+
+            return api_response(
+                success=True,
+                data=None,
+                message="Cart cleared successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except Cart.DoesNotExist:
+            return api_response(
+                success=False,
+                data=None,
+                error="Cart not found",
+                message="Cart not found for user",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
