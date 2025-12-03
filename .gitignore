@@ -1,2 +1,7 @@
 .github/instructions/kluster-code-verify.instructions.md
 .kluster
+__pycache__/
+*.pyc
+logs/
+.env
+db.sqlite3
