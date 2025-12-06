@@ -120,6 +120,9 @@ All API endpoints return responses in a consistent format:
 | `DELETE` | `/cart-items/<pk>/` | Remove item from cart | ✅ | ✅ Working |
 | `POST` | `/checkout/` | Convert cart to order, clear cart | ✅ | ✅ Working |
 | `POST` | `/add-to-cart/<product_pk>/` | Add product to cart (increments if exists) | ✅ | ✅ Working |
+| `POST` | `/remove-from-cart/<product_pk>/` | Remove specific product from cart | ✅ | ✅ Working |
+| `POST` | `/decrement-product-quantity-in-cart/<product_pk>/` | Decrement product quantity in cart | ✅ | ✅ Working |
+| `POST` | `/clear-cart/` | Clear all items from user's cart | ✅ | ✅ Working |
 
 **Fixed:**
 1. ✅ **CheckoutView** - Now calculates `total_amount` correctly by summing all order items.
@@ -244,13 +247,13 @@ All API endpoints return responses in a consistent format:
 |----------|----------------|---------|--------|---------|
 | Authentication | 13 | 13 | 0 | 0 |
 | Products | 16 | 16 | 0 | 0 |
-| Cart | 8 | 8 | 0 | 0 |
+| Cart | 11 | 11 | 0 | 0 |
 | Orders | 9 | 9 | 0 | 0 |
 | Shipping | 1 | 1 | 0 | 0 |
 | Payments | 6 | 6 | 0 | 0 |
 | Reviews | 4 | 4 | 0 | 0 |
 | Documentation | 2 | 2 | 0 | 0 |
-| **TOTAL** | **59** | **59** | **0** | **0** |
+| **TOTAL** | **62** | **62** | **0** | **0** |
 
 ---
 
