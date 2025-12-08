@@ -18,6 +18,18 @@ class ProductSerializer(serializers.ModelSerializer):
         read_only="true",
         slug_field ='name'
     )
+
+class ProductImageCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductImage
+        fields = ['image', 'product', 'alt_text']
+
+class ProductCreateUpdateSerializer(serializers.ModelSerializer):   
+
+    class Meta:
+        model = Product
+        fields = ['name', 'category', 'description',
+                  'price', 'stock']
     
     class Meta:
         model = Product
