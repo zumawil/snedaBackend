@@ -99,3 +99,46 @@ class TrackShippingView(APIView):
         )
     
 
+class ShippingListView(APIView):
+    """
+    List all shipping records
+    only verified admins are allowed 
+    """
+    permission_classes = [IsAdminUser,IsVerifiedUser]
+
+    def get(self, request):
+        shippings = Shipping.objects.all()
+        serializer = ShippingSerializer(shippings, many=True)
+        return api_response(
+            success=True,
+            data={"shippings": serializer.data},
+            message="All shipping records retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+
+class ShippingDetailView(APIView):
+    """
+    Retrieve a specific shipping record by ID
+    only verified admins are allowed 
+    """
+    permission_classes = [IsAdminUser,IsVerifiedUser]
+
+    def get(self, request, shipping_id):
+        shipping = get_object_or_404(Shipping, id=shipping_id)
+        if not shipping:
+            return api_response(
+                success=False,
+                data=None,
+                error="Shipping not found",
+                message="Shipping record not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        serializer = ShippingSerializer(shipping)
+
+        return api_response(
+            success=True,
+            data={"shipping": serializer.data},
+            message="Shipping record retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )

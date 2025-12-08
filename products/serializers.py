@@ -8,6 +8,11 @@ class ProductImageSerializer(serializers.ModelSerializer):
         model = ProductImage
         fields = ['id','image', 'product', 'alt_text']
 
+class ProductImageCreateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = ProductImage
+        fields = ['image', 'product', 'alt_text']
 
 
 class ProductSerializer(serializers.ModelSerializer):

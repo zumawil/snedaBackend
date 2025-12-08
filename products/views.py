@@ -10,7 +10,7 @@ from rest_framework import permissions
 from reviews.serializers import ReviewsSerializer
 from django.shortcuts import get_object_or_404
 
-from .serializers import ProductImageSerializer, ProductSerializer, CategorySerializer
+from .serializers import ProductImageSerializer, ProductSerializer, CategorySerializer, ProductImageCreateSerializer
 from .models import Category, Product, ProductImage
 from utils.apiResponse import api_response
 # Create your views here.
@@ -122,6 +122,11 @@ class ProductImageListView(generics.ListCreateAPIView):
     permission_classes = [IsVerifiedUser]
     serializer_class = ProductImageSerializer
     queryset = ProductImage.objects.all()
+
+    def get_serializer(self, *args, **kwargs):
+        if self.request.method == 'POST':
+            return ProductImageCreateSerializer(*args, **kwargs)
+        return super().get_serializer(*args, **kwargs)
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
