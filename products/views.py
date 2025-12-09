@@ -10,12 +10,17 @@ from rest_framework import permissions
 from reviews.serializers import ReviewsSerializer
 from django.shortcuts import get_object_or_404
 
+<<<<<<< HEAD
 from .serializers import (ProductImageSerializer, ProductSerializer, 
                           CategorySerializer, ProductImageCreateSerializer, 
                           ProductCreateUpdateSerializer 
                     )
+=======
+from .serializers import ProductImageSerializer, ProductSerializer,ProductCreateUpdateSerializer, CategorySerializer, ProductImageCreateSerializer
+>>>>>>> debug_old_code
 from .models import Category, Product, ProductImage
 from utils.apiResponse import api_response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 # Create your views here.
 
 # Product API Views
@@ -125,6 +130,40 @@ class ProductImageListView(generics.ListCreateAPIView):
     permission_classes = [IsVerifiedUser]
     serializer_class = ProductImageSerializer
     queryset = ProductImage.objects.all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_serializer(self, *args, **kwargs):
+        if self.request.method == 'POST':
+            return ProductImageCreateSerializer(*args, **kwargs)
+        return super().get_serializer(*args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Product images retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Product image created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -164,6 +203,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     permission_classes = [IsVerifiedUser]
     queryset = ProductImage.objects.all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -219,6 +259,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
     """
     permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -264,6 +305,7 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:

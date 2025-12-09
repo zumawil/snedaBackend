@@ -133,6 +133,34 @@ class CartItemListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         serializer.save(cart=cart)
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Cart items retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            self.perform_create(serializer)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Cart item created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsVerifiedUser]
@@ -142,6 +170,46 @@ class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         # only allow items belonging to the current user's cart
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         return cart.items.all()
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Cart item retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+    
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        if serializer.is_valid():
+            serializer.save()
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Cart item updated successfully",
+                status_code=status.HTTP_200_OK
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return api_response(
+            success=True,
+            data=None,
+            message="Cart item deleted successfully",
+            status_code=status.HTTP_204_NO_CONTENT
+        )
 
 from orders.models import Order, OrderItem
 

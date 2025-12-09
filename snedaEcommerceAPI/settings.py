@@ -160,7 +160,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES" : (
         "users.authentication.CookieJWTAuthentication",
-    )
+    ),
+    "EXCEPTION_HANDLER": "utils.exception_handler.custom_exception_handler",  
 }
 # JWT SETTINGS
 SIMPLE_JWT = {
@@ -194,6 +195,8 @@ SWAGGER_SETTINGS = {
 
 # for logging
 # Create a "logs" directory inside your project root if it doesn't exist
+
+'''
 LOG_DIR = Path(BASE_DIR, "logs")
 LOG_DIR.mkdir(exist_ok=True)
 
@@ -280,3 +283,4 @@ LOGGING = {
 
 # to watch live logs
 # run this in a separate terminal: tail -f logs/errors.log
+'''

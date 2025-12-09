@@ -1,5 +1,7 @@
 [2025-12-03 14:10:52,879] [WARNING] django.server - "GET /cart/ HTTP/1.1" 401 58
-[2025-12-08 16:26:11,363] [WARNING] django.server - "GET / HTTP/1.1" 404 10915
-[2025-12-08 16:26:21,638] [ERROR] django.server - "GET /redoc/?format=openapi HTTP/1.1" 500 240207
-[2025-12-08 16:26:52,429] [WARNING] django.server - "GET / HTTP/1.1" 404 10915
-[2025-12-08 16:27:02,485] [ERROR] django.server - "GET /redoc/?format=openapi HTTP/1.1" 500 240207
+[2025-12-03 15:21:11,685] [WARNING] django.server - "PUT /categories/20/ HTTP/1.1" 404 136
+[2025-12-03 15:22:49,030] [ERROR] django.server - "POST /users/login/ HTTP/1.1" 500 136
+[2025-12-03 15:50:57,061] [WARNING] django.server - "GET / HTTP/1.1" 404 10928
+[2025-12-03 15:50:58,718] [WARNING] django.server - "GET /favicon.ico HTTP/1.1" 404 10979
+[2025-12-03 15:52:34,871] [WARNING] django.server - "PUT /categories/20/ HTTP/1.1" 404 136
+[2025-12-03 15:52:44,374] [ERROR] django.server - "PUT /categories/1/ HTTP/1.1" 500 126

@@ -16,6 +16,10 @@ from django.db.models import F
 from products.models import Product
 from utils.apiResponse import api_response
 
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+
 logger = logging.getLogger(__name__)
 
 # Create your views here.
@@ -64,18 +68,12 @@ class OrderView(APIView):
             )
 
 class OrderItemView(APIView):
-    """
-    Handle order items.
-
-    GET /order-items/: List all order items for the authenticated user.
-    GET /order-items/<pk>/: Retrieve details of a specific order item.
-    POST /order-items/: Create a new order item.
-    PUT /order-items/<pk>/: Update a specific order item.
-    DELETE /order-items/<pk>/: Delete a specific order item.
-    """
+    
 
     permission_classes = [IsVerifiedUser]
-
+    '''
+    get user order by pk
+    '''
     def get(self, request, pk=None):
         try:
             if pk:
@@ -106,7 +104,9 @@ class OrderItemView(APIView):
                 message="Error retrieving order items",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
+    '''
+    create order item 
+    '''
     def post(self, request):
         serializer = OrderItemCreateSerializer(data=request.data)
         if serializer.is_valid():
@@ -135,6 +135,9 @@ class OrderItemView(APIView):
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
+    '''
+        update order item
+    '''
     def put(self, request, pk):
         try:
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
@@ -162,7 +165,9 @@ class OrderItemView(APIView):
                 message="Error updating order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
+    '''
+        delete order item
+    '''
     def delete(self, request, pk):
         try:
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
@@ -181,8 +186,6 @@ class OrderItemView(APIView):
                 message="Error deleting order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
-
 class OrderUpdateStatusView(APIView):
     """
     Update order status (Admin only).

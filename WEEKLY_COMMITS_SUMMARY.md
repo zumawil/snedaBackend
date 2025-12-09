@@ -1,8 +1,29 @@
-# Weekly Commits Summary (This Week: 2025-11-23 to 2025-11-27)
+# Weekly Commits Summary (This Week: 2025-11-30 to 2025-12-03)
 
 This document summarizes all commits made this week in the Sneda Ecommerce API project.
 
 ## Commit History (Organized by Day)
+
+### Tuesday (2025-12-03)
+1. **API Response Standardization and Error Normalization Enhancement**
+    - **Added**: `api_response` utility function with automatic error normalization
+    - **Enhanced**: Custom exception handler to format DRF exceptions with standardized response format
+    - **Created**: Base generic views (`GenericListCreateAPIView`, `GenericRetrieveUpdateDestroyAPIView`, etc.) for consistent response handling
+    - **Updated**: All generic views in Products, Carts, and Reviews apps to use standardized responses
+    - **Integrated**: `normalize_errors` utility to flatten complex nested validation errors into readable format
+    - **Benefits**: Consistent API behavior, better error messages for frontend developers, automatic error normalization
+    - **Files Modified**:
+      - `utils/apiResponse.py` - Enhanced with automatic error normalization
+      - `utils/exception_handler.py` - Enhanced with error normalization for DRF exceptions  
+      - `utils/generic_views.py` - Created base classes for consistent response handling
+      - `API_RESPONSE_GUIDE.md` - Complete documentation for new features
+      - `products/views.py` - Updated all generic views to use standardized responses
+      - `carts/views.py` - Updated generic views to use standardized responses
+      - `reviews/views.py` - Updated generic views to use standardized responses
+      - `ENDPOINTS_DOCUMENTATION.md` - Updated with latest enhancements
+    - **Result**: All API endpoints now return consistent format with flattened error messages for better developer experience
+
+## Previous Week Summary (2025-11-23 to 2025-11-27)
 
 ### Monday (2025-11-24)
 1. **9b63415** - updated md files

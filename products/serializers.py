@@ -5,11 +5,23 @@ from reviews.serializers import ReviewsSerializer
 class ProductImageSerializer(serializers.ModelSerializer):
     
     class Meta:
-        model = ProductImage
+        model = ProductImage 
         fields = ['id','image', 'product', 'alt_text']
 
+class ProductImageCreateSerializer(serializers.ModelSerializer):
 
+    class Meta:
+        model = ProductImage
+        fields = ['image', 'product', 'alt_text']
 
+# serializer for creating and updating products
+class ProductCreateUpdateSerializer(serializers.ModelSerializer):
+    images = ProductImageCreateSerializer(many=True, read_only=True)
+    class Meta:
+        model = Product
+        fields = ['name', 'category', 'description', 'price', 'stock', 'images']
+
+#  serializer for retrieving product details
 class ProductSerializer(serializers.ModelSerializer):
 
     reviews = ReviewsSerializer(many=True, read_only=True)
