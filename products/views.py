@@ -10,9 +10,10 @@ from rest_framework import permissions
 from reviews.serializers import ReviewsSerializer
 from django.shortcuts import get_object_or_404
 
-from .serializers import ProductImageSerializer, ProductSerializer, CategorySerializer, ProductImageCreateSerializer
+from .serializers import ProductImageSerializer, ProductSerializer,ProductCreateUpdateSerializer, CategorySerializer, ProductImageCreateSerializer
 from .models import Category, Product, ProductImage
 from utils.apiResponse import api_response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 # Create your views here.
 
 # Product API Views
@@ -122,6 +123,7 @@ class ProductImageListView(generics.ListCreateAPIView):
     permission_classes = [IsVerifiedUser]
     serializer_class = ProductImageSerializer
     queryset = ProductImage.objects.all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer(self, *args, **kwargs):
         if self.request.method == 'POST':
@@ -166,6 +168,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     permission_classes = [IsVerifiedUser]
     queryset = ProductImage.objects.all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -221,6 +224,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
     """
     permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -266,6 +270,7 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
