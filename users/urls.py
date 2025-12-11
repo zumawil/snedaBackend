@@ -1,7 +1,7 @@
 from django.urls import path
 
 from .views import ( SignupUser, CookieJWTLoginView, 
-                    CookieTokenRefreshView, GetUsersView, 
+                    CookieTokenRefreshView,
                     VerifyOTPView, UserProfileView, LogoutUserView,
                     ChangePasswordRequestView, ResetPasswordConfirmView, ResetPasswordView, GetUserSession)
 
@@ -10,15 +10,15 @@ urlpatterns = [
     path("login/", CookieJWTLoginView.as_view(), name="login"),
     path("refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),
     path("verify-otp/", VerifyOTPView.as_view(), name="verify_otp"),  # Placeholder for OTP verification view
-    path("users/", GetUsersView.as_view(), name="get_users"),
+    # path("users/", GetUsersView.as_view(), name="get_users"),
 
     #porfile endpoints
     path("profile/", UserProfileView.as_view(), name="profile"),
 
     path("logout/", LogoutUserView.as_view(), name="logout"),
-    path('change-password/', ChangePasswordRequestView().as_view(), name="change_passsord"),
-    # expects uid, token, new password and new password
-    path('reset-password/', ResetPasswordView().as_view(), name="change_passsord"),
-    path('reset-password-confirm/', ResetPasswordConfirmView.as_view(), name='reset_password'),
+    path('change-password/', ChangePasswordRequestView().as_view(), name="request_passsword_change"),
+    # expects uid, token, new password and new password as query params
+    path('reset-password/', ResetPasswordView().as_view(), name="reset_passsord"),
+    path('reset-password-confirm/', ResetPasswordConfirmView.as_view(), name='confirm_password_reset'),
     path('session/', GetUserSession.as_view(), name='get_user_session'),
 ]

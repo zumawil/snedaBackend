@@ -34,6 +34,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-*!@9oayqjy43r1r6ga$h0
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else []
+# Add testserver for test environments
+ALLOWED_HOSTS += ['testserver']
 
 # Media files (user-uploaded content)
 MEDIA_URL = '/media/'
