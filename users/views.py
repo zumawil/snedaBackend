@@ -315,14 +315,22 @@ class LogoutUserView(APIView):
             message="Logged out successfully",
             status_code=status.HTTP_200_OK
         )
-        response.delete_cookie('access')
-        response.delete_cookie('refresh')
-        response.delete_cookie('role')
-        return api_response(
-            success=True,
-            message='logged out successfully',
-            status_code=status.HTTP_200_OK
-        )
+        if response.cookies.get('access'):
+            response.delete_cookie('access')
+            response.delete_cookie('refresh')
+            return api_response(
+                success=True,
+                message='logged out successfully',
+                status_code=status.HTTP_200_OK
+            )
+        else:
+            return api_response(
+                success=False,
+                data=None,
+                error="No active session",
+                message="User is not logged in",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 
 from django.utils.encoding import force_bytes
@@ -394,6 +402,8 @@ class ChangePasswordRequestView(APIView):
             status_code=status.HTTP_202_ACCEPTED
         )
 
+# checks if uid and token are valid when user clicks
+#  the link sent from change password request view
 class ResetPasswordConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -421,7 +431,7 @@ class ResetPasswordConfirmView(APIView):
                 message='Invalid or expired token',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
+# user actually send new password along with uid and token
 class ResetPasswordView(APIView):   
     permission_classes = [permissions.AllowAny]
 
@@ -485,3 +495,5 @@ class GetUserSession(APIView):
             message="Session data retrieved successfully",
             status_code=status.HTTP_200_OK
         )
+
+
