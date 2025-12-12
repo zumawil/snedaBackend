@@ -10,14 +10,12 @@ from rest_framework import permissions
 from reviews.serializers import ReviewsSerializer
 from django.shortcuts import get_object_or_404
 
-<<<<<<< HEAD
-from .serializers import (ProductImageSerializer, ProductSerializer, 
-                          CategorySerializer, ProductImageCreateSerializer, 
-                          ProductCreateUpdateSerializer 
-                    )
-=======
-from .serializers import ProductImageSerializer, ProductSerializer,ProductCreateUpdateSerializer, CategorySerializer, ProductImageCreateSerializer
->>>>>>> debug_old_code
+
+from .serializers import (
+    ProductImageSerializer, 
+    ProductSerializer,ProductCreateUpdateSerializer, 
+    CategorySerializer, ProductImageCreateSerializer
+)
 from .models import Category, Product, ProductImage
 from utils.apiResponse import api_response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
