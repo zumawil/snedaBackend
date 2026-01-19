@@ -9,4 +9,6 @@ urlpatterns = [
     path('product-images/', views.ProductImageListView.as_view(), name='product-images'), # list all product images
     path('product-images/<int:pk>/', views.ProductImageDetailView.as_view(), name='product-image-detail'), # get a product image by id
     path('product-reviews/', views.GetProductReviewsView.as_view(), name='get-product_reviews'),
+    path('products-in-category/', views.GetProductInCategory.as_view(), name='get-products-in-category'),
+    path('products-price-range/', views.GetProductPriceRange.as_view(), name='get-products-price-range'),
 ]

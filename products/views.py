@@ -9,6 +9,7 @@ from django.db.models import Count
 from rest_framework import permissions
 from reviews.serializers import ReviewsSerializer
 from django.shortcuts import get_object_or_404
+from django.db.models.functions import Lower
 
 
 from .serializers import (
@@ -255,7 +256,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
     GET: Retrieve a list of all products with their images.
     POST: Create a new product (requires name, category, description, price, stock).
     """
-    permission_classes = [IsVerifiedUser]
+    # permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
     parser_classes = [MultiPartParser, FormParser]
 
@@ -301,7 +302,7 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     PUT/PATCH: Update product (Admin and Verified User required).
     DELETE: Delete product (Admin and Verified User required).
     """
-    permission_classes = [IsVerifiedUser]
+    # permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -376,5 +377,89 @@ class GetProductReviewsView(APIView):
             success=True,
             data={"reviews": reviews.data},
             message="Product reviews retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+
+class GetProductInCategory(APIView):
+    # permission_classes = [IsVerifiedUser]
+
+    def get(self, request):
+        category_name = request.query_params.get('category')
+
+        categories = category_name.split(',') 
+        # convert categories to lowercase to mimic iexact
+        lower_categories = [category.lower() for category in categories]
+
+        if not categories:
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing category name/s",
+                message="Category name/s is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get category or return 404
+        category = Category.objects.annotate(
+            name_lower=Lower('name')
+        ).filter(name_lower__in=lower_categories)
+
+        if not category.exists():
+            return api_response(
+                success=False,
+                data=None,
+                error="Category/Categories not found",
+                message="Category/Categories not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Serialize all products for this category
+        products = ProductSerializer(
+            Product.objects.filter(category__in=category),
+            many=True
+        )
+
+        return api_response(
+            success=True,
+            data={"products": products.data},
+            message="Products in category retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+class GetProductPriceRange(APIView):
+   
+    def get(self, request):
+        min_price = request.query_params.get('min_price')
+        max_price = request.query_params.get('max_price')
+
+        if not min_price or not max_price:
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing price range",
+                message="Price range is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get products within the price range
+        products = Product.objects.filter(price__gte=min_price, price__lte=max_price)
+
+        if not products.exists():
+            return api_response(
+                success=False,
+                data=None,
+                error="No products found within the price range",
+                message="No products found within the price range",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Serialize all products within the price range
+        products = ProductSerializer(products, many=True)
+
+        return api_response(
+            success=True,
+            data={"products": products.data},
+            message="Products within price range retrieved successfully",
             status_code=status.HTTP_200_OK
         )

@@ -41,7 +41,9 @@ def send_otp_to_user(user):
     )
 
 def verify_user_otp(user, otp_input):
-    totp = pyotp.TOTP(user.otp_secret)
+    if not user.otp_secret:
+        return False
+    totp = pyotp.TOTP(user.otp_secret, interval=300)
     if totp.verify(otp_input):
         user.verified = True
         user.otp_secret = None

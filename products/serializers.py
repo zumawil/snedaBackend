@@ -23,13 +23,18 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
 
 #  serializer for retrieving product details
 class ProductSerializer(serializers.ModelSerializer):
-
     reviews = ReviewsSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     category = serializers.SlugRelatedField(
         read_only="true",
         slug_field ='name'
     )
+    class Meta:
+        model = Product
+        fields = ['id','name', 'category', 'description',
+                  'price', 'stock', 'created_at', 'updated_at',
+                  'images', 'reviews']
+    
 
 class ProductImageCreateSerializer(serializers.ModelSerializer):
     class Meta:

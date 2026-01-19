@@ -34,7 +34,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-*!@9oayqjy43r1r6ga$h0
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else []
-# Add testserver for test environments
+# testserver for test environments
 ALLOWED_HOSTS += ['testserver']
 
 # Media files (user-uploaded content)
@@ -163,8 +163,11 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES" : (
         "users.authentication.CookieJWTAuthentication",
     ),
-    "EXCEPTION_HANDLER": "utils.exception_handler.custom_exception_handler",  
+    "EXCEPTION_HANDLER": "utils.exception_handler.custom_exception_handler", 
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 2
 }
+
 # JWT SETTINGS
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
