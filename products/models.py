@@ -1,6 +1,28 @@
 from django.db import models
 
 # Create your models here.
+
+class ProductGroup(models.Model):
+    name = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.name
+
+class HSCode(models.Model):
+    code = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.code
+
+class Brand(models.Model):
+    name = models.CharField(max_length=100)
+
+class ProductDescription(models.Model):
+    description = models.TextField()
+
+    def __str__(self):
+        return self.description
+
 class Category(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
@@ -9,16 +31,38 @@ class Category(models.Model):
         return self.name
     
 class Product(models.Model):
-    name = models.CharField(max_length=255)
-    category = models.ForeignKey(Category, related_name='products', on_delete=models.CASCADE, default=None)
-    description = models.TextField()
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    stock = models.IntegerField()
+    item_no = models.CharField(max_length=50, unique=True, primary_key=True)
+    product_group = models.ForeignKey(ProductGroup, related_name='products', on_delete=models.CASCADE)
+    description = models.ForeignKey(ProductDescription, related_name='products', on_delete=models.CASCADE)
+
+    hs_code = models.ForeignKey(HSCode, related_name='products', on_delete=models.CASCADE)
+    gtin = models.CharField(max_length=14, unique=True, null=True, blank=True)
+
+    height = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    width = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    length = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    weight = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+
+    box_qty = models.IntegerField(null=True, blank=True)
+    inventory_qty = models.IntegerField(default=0)
+
+    #expected_arrival = models.DateField(null=True, blank=True)
+
+    gross_price = models.DecimalField(max_digits=10, decimal_places=2)
+    brand = models.ForeignKey(Brand, related_name='products', on_delete=models.CASCADE)
+
+    in_stock = models.IntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ['-created_at']
+
     def __str__(self):
-        return self.name
+        return f"{self.item_no} - {self.description.description}"
+
+
     
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, related_name='images', on_delete=models.CASCADE)
