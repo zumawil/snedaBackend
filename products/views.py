@@ -11,6 +11,9 @@ from reviews.serializers import ReviewsSerializer
 from django.shortcuts import get_object_or_404
 from django.db.models.functions import Lower
 
+# for api view pagination
+from rest_framework.pagination import PageNumberPagination
+
 
 from .serializers import (
     ProductImageSerializer, 
@@ -24,100 +27,100 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 # Product API Views
 
-class CategoryListCreateView(generics.ListCreateAPIView):
-    """
-    List all categories or create a new category.
+# class CategoryListCreateView(generics.ListCreateAPIView):
+#     """
+#     List all categories or create a new category.
 
-    GET: Retrieve a list of all categories with product counts.
-    POST: Create a new category (Admin and Verified User required).
-    """
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
-    permission_classes = [IsVerifiedUser]
+#     GET: Retrieve a list of all categories with product counts.
+#     POST: Create a new category (Admin and Verified User required).
+#     """
+#     queryset = Category.objects.all()
+#     serializer_class = CategorySerializer
+#     permission_classes = [IsVerifiedUser]
 
-    def get_queryset(self):
-        # calculate produt count for all the categories in the table
-        return Category.objects.annotate(products_count=Count('products'))
+#     def get_queryset(self):
+#         # calculate produt count for all the categories in the table
+#         return Category.objects.annotate(products_count=Count('products'))
     
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return api_response(
-            success=True,
-            data=serializer.data,
-            message="Categories retrieved successfully",
-            status_code=status.HTTP_200_OK
-        )
+#     def list(self, request, *args, **kwargs):
+#         queryset = self.get_queryset()
+#         serializer = self.get_serializer(queryset, many=True)
+#         return api_response(
+#             success=True,
+#             data=serializer.data,
+#             message="Categories retrieved successfully",
+#             status_code=status.HTTP_200_OK
+#         )
     
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return api_response(
-                success=True,
-                data=serializer.data,
-                message="Category created successfully",
-                status_code=status.HTTP_201_CREATED
-            )
-        return api_response(
-            success=False,
-            data=None,
-            error="Validation failed",
-            message=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return api_response(
+#                 success=True,
+#                 data=serializer.data,
+#                 message="Category created successfully",
+#                 status_code=status.HTTP_201_CREATED
+#             )
+#         return api_response(
+#             success=False,
+#             data=None,
+#             error="Validation failed",
+#             message=serializer.errors,
+#             status_code=status.HTTP_400_BAD_REQUEST
+#         )
 
-class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete a specific category.
+# class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+#     """
+#     Retrieve, update, or delete a specific category.
 
-    GET: Retrieve category details.
-    PUT/PATCH: Update category (Admin and Verified User required).
-    DELETE: Delete category (Admin and Verified User required).
-    """
-    queryset = Category.objects.all()
-    serializer_class = CategorySerializer
-    permission_classes = [IsVerifiedUser]
+#     GET: Retrieve category details.
+#     PUT/PATCH: Update category (Admin and Verified User required).
+#     DELETE: Delete category (Admin and Verified User required).
+#     """
+#     queryset = Category.objects.all()
+#     serializer_class = CategorySerializer
+#     permission_classes = [IsVerifiedUser]
 
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return api_response(
-            success=True,
-            data=serializer.data,
-            message="Category retrieved successfully",
-            status_code=status.HTTP_200_OK
-        )
+#     def retrieve(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance)
+#         return api_response(
+#             success=True,
+#             data=serializer.data,
+#             message="Category retrieved successfully",
+#             status_code=status.HTTP_200_OK
+#         )
     
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        if serializer.is_valid():
-            serializer.save()
-            return api_response(
-                success=True,
-                data=serializer.data,
-                message="Category updated successfully",
-                status_code=status.HTTP_200_OK
-            )
-        return api_response(
-            success=False,
-            data=None,
-            error="Validation failed",
-            message=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return api_response(
+#                 success=True,
+#                 data=serializer.data,
+#                 message="Category updated successfully",
+#                 status_code=status.HTTP_200_OK
+#             )
+#         return api_response(
+#             success=False,
+#             data=None,
+#             error="Validation failed",
+#             message=serializer.errors,
+#             status_code=status.HTTP_400_BAD_REQUEST
+#         )
     
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.delete()
-        return api_response(
-            success=True,
-            data=None,
-            message="Category deleted successfully",
-            status_code=status.HTTP_204_NO_CONTENT
-        )
+#     def destroy(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         instance.delete()
+#         return api_response(
+#             success=True,
+#             data=None,
+#             message="Category deleted successfully",
+#             status_code=status.HTTP_204_NO_CONTENT
+#         )
 
 class ProductImageListView(generics.ListCreateAPIView):
     """
@@ -200,7 +203,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     PUT/PATCH: Update product image.
     DELETE: Delete product image.
     """
-    permission_classes = [IsVerifiedUser]
+    # permission_classes = [IsVerifiedUser]
     queryset = ProductImage.objects.all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -250,12 +253,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 class ProductListCreateView(generics.ListCreateAPIView):
-    """
-    List all products or create a new product.
-
-    GET: Retrieve a list of all products with their images.
-    POST: Create a new product (requires name, category, description, price, stock).
-    """
+    
     # permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
     parser_classes = [MultiPartParser, FormParser]
@@ -267,6 +265,18 @@ class ProductListCreateView(generics.ListCreateAPIView):
     
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            data = self.get_paginated_response(serializer.data).data
+            return api_response(
+                success=True,
+                data=data,
+                message="Products retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+
         serializer = self.get_serializer(queryset, many=True)
         return api_response(
             success=True,
@@ -372,57 +382,61 @@ class GetProductReviewsView(APIView):
 
         # Serialize all reviews for this product
         reviews = ReviewsSerializer(product.reviews.all(), many=True)
+        data = self.get_paginated_response(reviews.data).data
 
         return api_response(
             success=True,
-            data={"reviews": reviews.data},
+            data={"reviews": data},
             message="Product reviews retrieved successfully",
             status_code=status.HTTP_200_OK
         )
 
+from .models import HSCode
 
-class GetProductInCategory(APIView):
+class GetProductByHSCode(APIView):
     # permission_classes = [IsVerifiedUser]
 
+    pagination = PageNumberPagination
+
     def get(self, request):
-        category_name = request.query_params.get('category')
+        hs_code = request.query_params.get('hs_code')
 
-        categories = category_name.split(',') 
-        # convert categories to lowercase to mimic iexact
-        lower_categories = [category.lower() for category in categories]
-
-        if not categories:
+        try: 
+            hs_codes = hs_code.split(',') 
+        except:
+            hs_codes = [hs_code]
+        
+        if not hs_codes:
             return api_response(
                 success=False,
                 data=None,
-                error="Missing category name/s",
-                message="Category name/s is required",
+                error="Missing HS code/s",
+                message="HS code/s is required",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get category or return 404
-        category = Category.objects.annotate(
-            name_lower=Lower('name')
-        ).filter(name_lower__in=lower_categories)
-
-        if not category.exists():
+        hs_code_products = Product.objects.filter(hs_code__code__in=hs_codes)
+       
+        if not hs_code_products.exists():
             return api_response(
                 success=False,
                 data=None,
-                error="Category/Categories not found",
-                message="Category/Categories not found",
+                error="HS code/s not found",
+                message="HS code/s not found",
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Serialize all products for this category
-        products = ProductSerializer(
-            Product.objects.filter(category__in=category),
-            many=True
-        )
+        paginator = self.pagination()
+        paginated_products = paginator.paginate_queryset(hs_code_products, request, view=self)
+        
+        # Serialize paginated products
+        serializer = ProductSerializer(paginated_products,many=True)
+
+        products_data = paginator.get_paginated_response(serializer.data).data
 
         return api_response(
             success=True,
-            data={"products": products.data},
+            data=products_data,
             message="Products in category retrieved successfully",
             status_code=status.HTTP_200_OK
         )

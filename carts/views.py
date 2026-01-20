@@ -247,7 +247,7 @@ class CheckoutView(APIView):
                 status_code=status.HTTP_200_OK
             )
 
-        # continue with order
+        # continue with  
         try:
             cart = Cart.objects.select_related('user').prefetch_related(
                 'items__product'
@@ -284,7 +284,7 @@ class CheckoutView(APIView):
                             order=order,
                             product=item.product,
                             quantity=item.quantity,
-                            price=item.product.price
+                            price=item.product.gross_price
                     )
 
             # Calculate total
@@ -384,7 +384,7 @@ class AddToCartView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        if product.stock < 1:
+        if product.inventory_qty < 1:
             return api_response(
                 success=False,
                 data=None,
@@ -407,7 +407,7 @@ class AddToCartView(APIView):
                  against the new quantity the user would have if this 
                  add operation succeeds.
             '''
-            if product.stock < cart_item.quantity + 1:
+            if product.inventory_qty < cart_item.quantity + 1:
                 return api_response(
                     success=False,
                     data=None,
@@ -469,6 +469,43 @@ class DecreMentProductQuantityInCartView(APIView):
                 success=True,
                 data=None,
                 message="Product quantity decremented successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except CartItem.DoesNotExist:
+            return api_response(
+                success=False,
+                data=None,
+                error="Product not found in cart",
+                message="Product with the given ID does not exist in the cart",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+class IncrementProductQuantityInCartView(APIView):
+    def post(self, request, product_pk):
+        try:
+            cart = Cart.objects.get(user=request.user)
+            # get the product in the cart item
+            cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
+            product = cart_item.product
+
+            new_quantity = cart_item.quantity + 1
+
+            if new_quantity > product.inventory_qty:
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Insufficient stock",
+                    message="Not enough stock available for this product",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            cart_item.quantity += 1
+            cart_item.save()
+
+            return api_response(
+                success=True,
+                data=None,
+                message="Product quantity incremented successfully",
                 status_code=status.HTTP_200_OK
             )
         except CartItem.DoesNotExist:

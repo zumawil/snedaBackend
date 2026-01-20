@@ -26,7 +26,7 @@ class CartItem(models.Model):
     
     # a user can buy more of one thing , this calculaes the sum of it
     def get_total_price(self):
-        return self.quantity * self.product.price
+        return self.quantity * self.product.gross_price
 
 # Idempotency table  to prevent creating same order two times
 class CheckoutAttempt(models.Model):

@@ -6,8 +6,9 @@ urlpatterns = [
     path('cart-items/', views.CartItemListCreateView.as_view(), name='cart-item-list'),  # GET cart items
     path('cart-items/<int:pk>/', views.CartItemDetailView.as_view(), name='cart-item-detail'),  # GET (detail), PUT, DELETE
     path('checkout/', views.CheckoutView.as_view(), name='checkout' ),
-    path('add-to-cart/<int:product_pk>/', views.AddToCartView.as_view(), name='add-to-cart'),
-    path('remove-from-cart/<int:product_pk>/', views.RemoveProductFromCartView.as_view(), name='remove-from-cart'),
-    path('decrement-product-quantity-in-cart/<int:product_pk>/', views.DecreMentProductQuantityInCartView.as_view(), name='decrement-product-quantity-in-cart'),
+    path('add-to-cart/<str:product_pk>/', views.AddToCartView.as_view(), name='add-to-cart'),
+    path('remove-from-cart/<str:product_pk>/', views.RemoveProductFromCartView.as_view(), name='remove-from-cart'),
+    path('decrement-product-quantity-in-cart/<str:product_pk>/', views.DecreMentProductQuantityInCartView.as_view(), name='decrement-product-quantity-in-cart'),
+    path('increment-product-quantity-in-cart/<str:product_pk>/', views.IncrementProductQuantityInCartView.as_view(), name='increment-product-quantity-in-cart'),
     path('clear-cart/', views.ClearCartView.as_view(), name='clear-cart'),
 ]

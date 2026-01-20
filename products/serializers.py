@@ -66,7 +66,7 @@ class ProductSerializer(serializers.ModelSerializer):
     brand = BrandSerializer(read_only=True)
     class Meta:
         model = Product
-        fields = ['id','item_no', 'product_group', 'description',
+        fields = ['item_no', 'product_group', 'description',
                   'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
                   'box_qty', 'inventory_qty', 'gross_price', 'brand',
                   'created_at', 'updated_at',
@@ -82,13 +82,19 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        fields = ['name', 'category', 'description',
-                  'price', 'stock']
+        fields = ['item_no', 'product_group', 'description',
+                  'hs_code', 'gtin', 'height',
+                      'width', 'length', 'weight',
+                  'box_qty', 'inventory_qty', 
+                  'gross_price', 'brand', 
+                  'images']
     
     class Meta:
         model = Product
-        fields = ['id','name', 'category', 'description',
-                  'price', 'stock', 'created_at', 'updated_at',
+        fields = ['item_no','product_group', 'description',
+                  'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
+                  'box_qty', 'inventory_qty', 'gross_price', 'brand',
+                  'created_at', 'updated_at',
                   'images', 'reviews']
         
     
