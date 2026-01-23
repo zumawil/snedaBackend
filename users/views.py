@@ -13,6 +13,7 @@ from .permissions import IsVerifiedUser, IsAdminUser
     
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse
+from utils.normalize_errors import normalize_errors
 
 from .models import CustomUser
 
@@ -60,6 +61,7 @@ class VerifyOTPView(APIView):
         otp_input = request.data.get("otp")
 
         User = get_user_model()
+
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
@@ -132,7 +134,7 @@ class SignupUser(APIView):
                 success=False,
                 data=None,
                 error="Validation failed",
-                message="User creation failed",
+                message=normalize_errors(serializer.errors),
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 

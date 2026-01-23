@@ -442,6 +442,8 @@ class GetProductByHSCode(APIView):
         )
 
 class GetProductPriceRange(APIView):
+
+    pagination = PageNumberPagination
    
     def get(self, request):
         min_price = request.query_params.get('min_price')
@@ -457,8 +459,8 @@ class GetProductPriceRange(APIView):
             )
 
         # Get products within the price range
-        products = Product.objects.filter(price__gte=min_price, price__lte=max_price)
-
+        products = Product.objects.filter(gross_price__gte=min_price, gross_price__lte=max_price)
+        
         if not products.exists():
             return api_response(
                 success=False,
@@ -468,12 +470,14 @@ class GetProductPriceRange(APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        # Serialize all products within the price range
-        products = ProductSerializer(products, many=True)
+        paginator = self.pagination()
+        paginated_products = paginator.paginate_queryset(products, request, view=self)
+        serializer = ProductSerializer(paginated_products,many=True)
+        products_data = paginator.get_paginated_response(serializer.data).data
 
         return api_response(
             success=True,
-            data={"products": products.data},
+            data=products_data,
             message="Products within price range retrieved successfully",
             status_code=status.HTTP_200_OK
         )

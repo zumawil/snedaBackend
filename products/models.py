@@ -15,17 +15,10 @@ class HSCode(models.Model):
         return self.code
 
 class Brand(models.Model):
-    name = models.CharField(max_length=100)
-
-class ProductDescription(models.Model):
-    description = models.TextField()
-
-    def __str__(self):
-        return self.description
+    name = models.CharField(max_length=300)
 
 class Category(models.Model):
-    name = models.CharField(max_length=100)
-    description = models.TextField(blank=True)
+    name = models.CharField(max_length=300, null=False, blank=False)
 
     def __str__(self):
         return self.name
@@ -33,7 +26,8 @@ class Category(models.Model):
 class Product(models.Model):
     item_no = models.CharField(max_length=50, unique=True, primary_key=True)
     product_group = models.ForeignKey(ProductGroup, related_name='products', on_delete=models.CASCADE)
-    description = models.ForeignKey(ProductDescription, related_name='products', on_delete=models.CASCADE)
+    # description 
+    category = models.ForeignKey(Category, related_name='products', on_delete=models.CASCADE)
 
     hs_code = models.ForeignKey(HSCode, related_name='products', on_delete=models.CASCADE)
     gtin = models.CharField(max_length=14, unique=True, null=True, blank=True)

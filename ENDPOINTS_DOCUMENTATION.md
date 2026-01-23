@@ -1,6 +1,6 @@
 # Sneda Ecommerce API - Complete Endpoint Documentation
 
-**Last Updated:** 2025-12-09 (Updated with Password Reset Fixes & Test Status)
+**Last Updated:** 2026-01-20 (Updated with Product Filter Endpoints)
 **Base URL:** All endpoints are relative to your Django server (e.g., `http://localhost:8000/`)
 **API Status:** ✅ 62/62 endpoints working (100% core features complete)
 **Production Ready:** 🟡 50% (Needs database setup, logging, testing expansion, deployment)
@@ -116,12 +116,6 @@ All API endpoints return responses in a consistent format:
 
 | Method | Endpoint | Description | Auth Required | Status |
 |--------|----------|-------------|---------------|--------|
-| `GET` | `/categories/` | List all categories (returns `products_count` per category) | ✅ (verified) | ✅ Working |
-| `POST` | `/categories/` | Create category | ✅ (verified) | ✅ Working |
-| `GET` | `/categories/<pk>/` | Retrieve category details | ✅ (verified) | ✅ Working |
-| `PUT` | `/categories/<pk>/` | Replace category | ✅ (verified) | ✅ Working |
-| `PATCH` | `/categories/<pk>/` | Partially update category | ✅ (verified) | ✅ Working |
-| `DELETE` | `/categories/<pk>/` | Delete category | ✅ (verified) | ✅ Working |
 | `GET` | `/products/` | List all products | ✅ (verified) | ✅ Working |
 | `POST` | `/products/` | Create new product | ✅ (verified) | ✅ Working |
 | `GET` | `/products/<pk>/` | Get product details | ✅ (verified) | ✅ Working |
@@ -133,10 +127,14 @@ All API endpoints return responses in a consistent format:
 | `GET` | `/product-images/<pk>/` | Get specific product image | ✅ (verified) | ✅ Working |
 | `DELETE` | `/product-images/<pk>/` | Delete product image | ✅ (verified) | ✅ Working |
 | `POST` | `/product-reviews/` | Get all reviews for a specific product | ❌ | ✅ Working |
+| `GET` | `/products-in-hs-code/` | Filter products by HS Code (query param: `hs_code`) | ❌ | ✅ Working |
+| `GET` | `/products-price-range/` | Filter products by price range (query params: `min_price`, `max_price`) | ❌ | ✅ Working |
 
 **Notes:**
-- Category list endpoint annotates `products_count` for each category.
+- **Disabled Endpoints:** Category management endpoints (`/categories/`) are currently disabled in the codebase.
 - Product and product image endpoints require verified permissions.
+- `/products-in-hs-code/`: Accepts `hs_code` query parameter (single or comma-separated).
+- `/products-price-range/`: Accepts `min_price` and `max_price` query parameters.
 
 **Remaining Gaps:**
 
@@ -447,6 +445,23 @@ order.save()
 - **Test Coverage**: All 14 stock management tests now pass ✅
 - **Files Modified**: 
   - `carts/views.py` - Updated CheckoutView transaction management
+
+## 🆕 Latest Updates (2026-01-20)
+
+### Product Filtering Features
+**New Endpoints Added:**
+1.  **HS Code Filtering**
+    - Endpoint: `GET /products-in-hs-code/`
+    - Parameters: `hs_code` (comma-separated strings)
+    - Description: Retrieves products associated with specific HS Codes.
+
+2.  **Price Range Filtering**
+    - Endpoint: `GET /products-price-range/`
+    - Parameters: `min_price` (decimal), `max_price` (decimal)
+    - Description: Retrieves products within a specified price range.
+
+**Changes:**
+- Disabled/Commented out Category management endpoints (`/categories/`) in `products/urls.py` and `views.py`.
 
 ## 🆕 Latest Updates (2025-12-09)
 

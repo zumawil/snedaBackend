@@ -1,7 +1,7 @@
 from .models import (
     Product, Category, 
     ProductImage, HSCode, 
-    ProductGroup, Brand, ProductDescription)
+    ProductGroup, Brand)
 from rest_framework import serializers 
 from reviews.serializers import ReviewsSerializer
 
@@ -20,16 +20,16 @@ class BrandSerializer(serializers.ModelSerializer):
         model = Brand
         fields = ['id', 'name']
 
-class ProductDescriptionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ProductDescription
-        fields = ['id', 'description']
-
 class ProductImageSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ProductImage 
         fields = ['id','image', 'product', 'alt_text']
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name']
 
 class ProductImageCreateSerializer(serializers.ModelSerializer):
 
@@ -41,14 +41,14 @@ class ProductImageCreateSerializer(serializers.ModelSerializer):
 class ProductCreateUpdateSerializer(serializers.ModelSerializer):
     images = ProductImageCreateSerializer(many=True, read_only=True)
     product_group = ProductGroupSerializer(read_only=True)
-    description = ProductDescriptionSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
     hs_code = HSCodeSerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     class Meta:
         model = Product
         fields = [
                     'item_no', 
-                    'product_group', 'description',
+                    'product_group', 'category',
                     'hs_code', 'gtin', 'height',
                     'width', 'length', 'weight',
                     'box_qty', 'inventory_qty', 
@@ -61,12 +61,12 @@ class ProductSerializer(serializers.ModelSerializer):
     reviews = ReviewsSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     product_group = ProductGroupSerializer(read_only=True)
-    description = ProductDescriptionSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
     hs_code = HSCodeSerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
     class Meta:
         model = Product
-        fields = ['item_no', 'product_group', 'description',
+        fields = ['item_no', 'product_group', 'category',
                   'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
                   'box_qty', 'inventory_qty', 'gross_price', 'brand',
                   'created_at', 'updated_at',
@@ -106,7 +106,7 @@ class CategorySerializer(serializers.ModelSerializer):
     products_count = serializers.IntegerField(read_only=True)
     class Meta:
         model = Category
-        fields = ['id','name', 'description','products_count']
+        fields = ['id','name']
 
     
 
