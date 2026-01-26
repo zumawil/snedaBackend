@@ -22,7 +22,7 @@ class CartItem(models.Model):
     cart = models.ForeignKey(Cart, related_name='items', on_delete=models.CASCADE)
 
     def __str__(self):
-        return f"{self.quantity} of {self.product.name} in cart of {self.cart.user.email}"
+        return f"{self.quantity} of {self.product.item_no} in cart of {self.cart.user.email}"
     
     # a user can buy more of one thing , this calculaes the sum of it
     def get_total_price(self):

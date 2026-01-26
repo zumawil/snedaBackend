@@ -264,34 +264,34 @@ class CheckoutView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Create order first (outside of payment transaction)
-            order = Order.objects.create(user=request.user)
-            
-            # Reserve stock atomically - do this in a separate transaction
+            # Create order and reserve stock atomically
             with transaction.atomic():
+                order = Order.objects.create(user=request.user)
                 for item in items:
                     # Try to reserve stock atomically
                     updated = Product.objects.filter(
-                        id=item.product.id,
-                        stock__gte=item.quantity  # Ensure sufficient stock
-                    ).update(stock=F('stock') - item.quantity)
+                        pk=item.product.pk,
+                        inventory_qty__gte=item.quantity  # Ensure sufficient stock
+                    ).update(inventory_qty=F('inventory_qty') - item.quantity)
                     
                     if updated == 0:
                         # Stock insufficient - rollback this transaction
-                        raise Exception(f'Insufficient stock for {item.product.name}. Available: {item.product.stock}, Requested: {item.quantity}')
+                        # Refresh product data for error message
+                        current_stock = Product.objects.get(pk=item.product.pk).inventory_qty
+                        raise Exception(f'Insufficient stock for product {item.product.item_no}. Available: {current_stock}, Requested: {item.quantity}')
                     
                     OrderItem.objects.create(
-                            order=order,
-                            product=item.product,
-                            quantity=item.quantity,
-                            price=item.product.gross_price
+                        order=order,
+                        product=item.product,
+                        quantity=item.quantity,
+                        price=item.product.gross_price
                     )
 
             # Calculate total
-            amount = sum([item.price * item.quantity for item in order.items.all()])
+            amount = sum([item.get_total_price() for item in order.items.all()])
 
             address = request.data.get('address')
-            pickup = True if request.data.get('pickup', '').lower() == 'true' else False
+            pickup = True if str(request.data.get('pickup', '')).lower() == 'true' else False
 
             # Create shipping record and get tracking number
             tracking_number = create_shipping(order, address, pickup)
@@ -390,7 +390,7 @@ class AddToCartView(APIView):
                 data=None,
                 error="Out of stock",
                 message="Product is out of stock",
-                status_code=status.HTTP_400_BAD_REQUEST
+                status_code=status.HTTP_200_OK
             )
 
         # check if the cart item is already created in the cart
@@ -413,7 +413,7 @@ class AddToCartView(APIView):
                     data=None,
                     error="Insufficient stock",
                     message="Not enough stock available for this product",
-                    status_code=status.HTTP_400_BAD_REQUEST
+                    status_code=status.HTTP_200_OK
                 )
             cart_item.quantity += 1
             cart_item.save()

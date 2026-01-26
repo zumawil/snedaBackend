@@ -79,24 +79,21 @@ class ProductImageCreateSerializer(serializers.ModelSerializer):
         fields = ['image', 'product', 'alt_text']
 
 class ProductCreateUpdateSerializer(serializers.ModelSerializer):   
-
-    class Meta:
-        model = Product
-        fields = ['item_no', 'product_group', 'description',
-                  'hs_code', 'gtin', 'height',
-                      'width', 'length', 'weight',
-                  'box_qty', 'inventory_qty', 
-                  'gross_price', 'brand', 
-                  'images']
+    images = ProductImageCreateSerializer(many=True, read_only=True)
+    category = CategorySerializer(read_only=True)
+    product_group = ProductGroupSerializer(read_only=True)
+    hs_code = HSCodeSerializer(read_only=True)
+    brand = BrandSerializer(read_only=True)
     
     class Meta:
         model = Product
-        fields = ['item_no','product_group', 'description',
-                  'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
-                  'box_qty', 'inventory_qty', 'gross_price', 'brand',
-                  'created_at', 'updated_at',
-                  'images', 'reviews']
-        
+        fields = ['item_no', 'gtin', 'height',
+                      'width', 'length', 'weight',
+                  'box_qty', 'inventory_qty', 
+                  'gross_price', 'brand', 
+                  'images', 'category', 'product_group', 'hs_code', 'brand']
+    
+    
     
 
 class CategorySerializer(serializers.ModelSerializer):

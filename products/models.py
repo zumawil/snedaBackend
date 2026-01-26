@@ -54,7 +54,7 @@ class Product(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.item_no} - {self.description.description}"
+        return f"{self.item_no} - {self.category.name}"
 
 
     
@@ -64,5 +64,5 @@ class ProductImage(models.Model):
     alt_text = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
-        return f"Image for {self.product.name}"
+        return f"Image for {self.product.item_no}"
     
