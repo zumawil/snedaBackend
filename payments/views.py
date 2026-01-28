@@ -8,7 +8,7 @@ from .models import Payment
 from .serializers import PaymentSerializer, PaymentRetrySerializer
 from orders.models import Order
 from users.permissions import IsVerifiedUser
-from orders.serailizer import OrderSerializer
+from orders.serializers import OrderSerializer
 import requests
 from dotenv import load_dotenv
 import os

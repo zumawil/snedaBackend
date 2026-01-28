@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'reviews',
     'notifications',
     'corsheaders',
+    'admin_panel',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',

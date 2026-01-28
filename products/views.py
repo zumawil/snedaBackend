@@ -253,10 +253,13 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 class ProductListCreateView(generics.ListCreateAPIView):
-    
-    # permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
     parser_classes = [MultiPartParser, FormParser]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [IsAdminUser()]
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -300,7 +303,7 @@ class ProductListCreateView(generics.ListCreateAPIView):
             data=None,
             error="Validation failed",
             message=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
+            status_code=status.HTTP_200_OK
         )
 
 
@@ -309,12 +312,16 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     Retrieve, update, or delete a specific product.
 
     GET: Retrieve product details.
-    PUT/PATCH: Update product (Admin and Verified User required).
-    DELETE: Delete product (Admin and Verified User required).
+    PUT/PATCH: Update product (Admin required).
+    DELETE: Delete product (Admin required).
     """
-    # permission_classes = [IsVerifiedUser]
     queryset = Product.objects.all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [permissions.AllowAny()]
+        return [IsAdminUser()]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:

@@ -7,7 +7,7 @@ from .serializer import (
     CartItemSerializer, CartItemCreateSerializer,
     CartSerializer, CheckoutSerializer, CheckoutResponseSerializer
 )
-from orders.serailizer import OrderSerializer
+from orders.serializers import OrderSerializer
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from rest_framework import generics

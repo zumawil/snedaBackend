@@ -1,6 +1,6 @@
 import logging
 from django.shortcuts import render
-from .serailizer import (
+from .serializers import (
     OrderItemSerializer, OrderItemCreateSerializer, OrderItemUpdateSerializer,
     OrderSerializer, OrderStatusUpdateSerializer, OrderDetailSerializer
 )
