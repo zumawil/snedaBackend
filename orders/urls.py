@@ -8,4 +8,6 @@ urlpatterns = [
     path('order-items/<int:pk>/', views.OrderItemView.as_view(), name='order-item-detail'),  # Get/update/delete order item
     path('order/update-status/<int:pk>/', views.OrderUpdateStatusView.as_view(), name='order-update-status'),  # Update order status
     path('order/cancel/<int:pk>/', views.OrderCancelView.as_view(), name='order-cancel'),  # Cancel order
+
+    path('order/details/', views.OrderDetailView.as_view(), name='order-details'),  # Get order details
 ]

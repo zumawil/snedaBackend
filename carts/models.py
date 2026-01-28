@@ -21,6 +21,9 @@ class CartItem(models.Model):
     product = models.ForeignKey(Product,related_name="cart_items", on_delete=models.CASCADE)
     cart = models.ForeignKey(Cart, related_name='items', on_delete=models.CASCADE)
 
+    class Meta:
+        ordering = ['id']
+
     def __str__(self):
         return f"{self.quantity} of {self.product.item_no} in cart of {self.cart.user.email}"
     

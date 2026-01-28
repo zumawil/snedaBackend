@@ -2,7 +2,7 @@ import logging
 from django.shortcuts import render
 from .serailizer import (
     OrderItemSerializer, OrderItemCreateSerializer, OrderItemUpdateSerializer,
-    OrderSerializer, OrderStatusUpdateSerializer
+    OrderSerializer, OrderStatusUpdateSerializer, OrderDetailSerializer
 )
 from rest_framework.response import Response
 from rest_framework import status
@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 class OrderView(APIView):
 
-    
     """
     Handle user orders.
 
@@ -302,3 +301,31 @@ class OrderCancelView(APIView):
                 message="Error cancelling order",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
+
+
+class OrderDetailView(APIView):
+    """
+    Handle user orders.
+
+    GET /orders/<pk>/: Retrieve details of a specific order.
+    """
+    def get(self, request):
+        try:
+            orders = Order.objects.filter(user=request.user)
+            serializer = OrderDetailSerializer(orders, many=True)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Orders retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error retrieving order details",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+    

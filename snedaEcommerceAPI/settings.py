@@ -33,7 +33,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-*!@9oayqjy43r1r6ga$h0
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '').split(',') if os.environ.get('ALLOWED_HOSTS') else []
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '').split(',') if host.strip()]
 # testserver for test environments
 ALLOWED_HOSTS += ['testserver']
 
@@ -177,8 +177,8 @@ SIMPLE_JWT = {
 }
 
 # CORS: frontend must be allowed to send cookies
-CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000' ).split(',')
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',') if origin.strip()]
+CORS_ALLOW_CREDENTIALS = True # allow cookies to be sent
 
 # CSRF / cookie-related (tweak for prod)
 CSRF_COOKIE_HTTPONLY = False # we need JS to read csrftoken cookie (so False)

@@ -58,3 +58,15 @@ class OrderStatusUpdateSerializer(serializers.Serializer):
         help_text="New order status"
     )
 
+class OrderDetailSerializer(serializers.ModelSerializer):
+    """Serializer for order details with proper OpenAPI schema documentation"""
+
+    """
+        returns serialized data for order details
+        without the items in the order
+    """
+    
+    class Meta:
+        model = Order
+        fields = ['id','total_amount', 'created_at']
+        read_only_fields = ['total_amount','status', 'created_at']
