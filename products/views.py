@@ -20,7 +20,7 @@ from .serializers import (
     ProductSerializer,ProductCreateUpdateSerializer, 
     CategorySerializer, ProductImageCreateSerializer
 )
-from .models import Category, Product, ProductImage
+from .models import Category, Product, ProductImage, Brand, HSCode, ProductGroup
 from utils.apiResponse import api_response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 # Create your views here.
@@ -178,6 +178,7 @@ class ProductImageListView(generics.ListCreateAPIView):
         )
     
     def create(self, request, *args, **kwargs):
+        print(request.data)
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -205,7 +206,6 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     # permission_classes = [IsVerifiedUser]
     queryset = ProductImage.objects.all()
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -254,7 +254,6 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class ProductListCreateView(generics.ListCreateAPIView):
     queryset = Product.objects.all()
-    parser_classes = [MultiPartParser, FormParser]
 
     def get_permissions(self):
         if self.request.method == 'GET':
@@ -289,22 +288,76 @@ class ProductListCreateView(generics.ListCreateAPIView):
         )
     
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
+        data = request.data.copy()
+
+        print(request.data)
+
+        try:
+            # Handle Product Group (Required, expects ID)
+            product_group_id = data.get('product_group')
+            if not product_group_id:
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Product group ID is required",
+                    message="Product group ID is required",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            try:
+                product_group = ProductGroup.objects.get(id=product_group_id)
+                data['product_group'] = product_group.id
+            except ProductGroup.DoesNotExist:
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Product group not found",
+                    message="Product group not found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+            # Handle Category (expects name, creates if missing)
+            category_name = data.get('category')
+            if category_name:
+                category, _ = Category.objects.get_or_create(name=category_name)
+                data['category'] = category.id
+            
+            # Handle Brand (expects name, creates if missing)
+            brand_name = data.get('brand')
+            if brand_name:
+                brand, _ = Brand.objects.get_or_create(name=brand_name)
+                data['brand'] = brand.id
+
+            # Handle HS Code (expects code, creates if missing)
+            hs_code_value = data.get('hs_code')
+            if hs_code_value:
+                hs_code, _ = HSCode.objects.get_or_create(code=hs_code_value)
+                data['hs_code'] = hs_code.id
+
+            serializer = self.get_serializer(data=data)
+            if serializer.is_valid():
+                serializer.save()
+                return api_response(
+                    success=True,
+                    data=serializer.data,
+                    message="Product created successfully",
+                    status_code=status.HTTP_201_CREATED
+                )
+                
             return api_response(
-                success=True,
-                data=serializer.data,
-                message="Product created successfully",
-                status_code=status.HTTP_201_CREATED
+                success=False,
+                data=None,
+                error="Validation failed",
+                message=serializer.errors,
+                status_code=status.HTTP_400_BAD_REQUEST
             )
-        return api_response(
-            success=False,
-            data=None,
-            error="Validation failed",
-            message=serializer.errors,
-            status_code=status.HTTP_200_OK
-        )
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Internal Server Error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -316,7 +369,6 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     DELETE: Delete product (Admin required).
     """
     queryset = Product.objects.all()
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
         if self.request.method == 'GET':
@@ -486,5 +538,63 @@ class GetProductPriceRange(APIView):
             success=True,
             data=products_data,
             message="Products within price range retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+from .serializers import ProductGroupSerializer
+from .models import ProductGroup
+
+class GetProductGroups(APIView):
+
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request):
+        groups = ProductGroup.objects.all()
+        serializer = ProductGroupSerializer(groups, many=True)
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message="Product groups retrieved successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+
+# search for products
+class SearchProduct(APIView):
+
+
+    print("aerch view")
+
+    permissions_class = []
+    authentication_class = []
+
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        query = request.query_params.get('q', '')
+
+        if not query:
+            return api_response(
+                data=[],
+                message="no query parameter provided",
+                error=True,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        products = Product.objects.filter(
+            item_no__icontains=query
+        )
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(products, request)
+
+        serializer = ProductSerializer(page, many=True)
+        data = paginator.get_paginated_response(serializer.data).data
+        
+        return api_response(
+            success=True,
+            data=data,
+            message="search results successfully returned",
             status_code=status.HTTP_200_OK
         )
