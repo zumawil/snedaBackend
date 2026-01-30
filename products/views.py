@@ -127,15 +127,18 @@ class ProductImageListView(generics.ListCreateAPIView):
     List all product images or create a new product image.
 
     GET: Retrieve a list of all product images.
-    POST: Create a new product image (requires product ID and image file).
+    POST: Create a new product image (supports bulk creation).
     """
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedUser, IsAdminUser]
     serializer_class = ProductImageSerializer
     queryset = ProductImage.objects.all()
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
 
     def get_serializer(self, *args, **kwargs):
         if self.request.method == 'POST':
+            # allow bulk creation of product images
+            if isinstance(self.request.data, list):
+                kwargs['many'] = True
             return ProductImageCreateSerializer(*args, **kwargs)
         return super().get_serializer(*args, **kwargs)
 
@@ -156,36 +159,7 @@ class ProductImageListView(generics.ListCreateAPIView):
             return api_response(
                 success=True,
                 data=serializer.data,
-                message="Product image created successfully",
-                status_code=status.HTTP_201_CREATED
-            )
-        return api_response(
-            success=False,
-            data=None,
-            error="Validation failed",
-            message=serializer.errors,
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return api_response(
-            success=True,
-            data=serializer.data,
-            message="Product images retrieved successfully",
-            status_code=status.HTTP_200_OK
-        )
-    
-    def create(self, request, *args, **kwargs):
-        print(request.data)
-        serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return api_response(
-                success=True,
-                data=serializer.data,
-                message="Product image created successfully",
+                message="Product image(s) created successfully",
                 status_code=status.HTTP_201_CREATED
             )
         return api_response(
@@ -211,6 +185,25 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return ProductImageCreateSerializer
         return ProductImageSerializer
+
+    def create(self, request, *args, **kwargs):
+        print("recieveced data", request.data)
+        serializer = self.get_serializer(data=request.data, many=True)
+        if serializer.is_valid():
+            serializer.save()
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Product image created successfully",
+                status_code=status.HTTP_201_CREATED
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -290,8 +283,6 @@ class ProductListCreateView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
 
-        print(request.data)
-
         try:
             # Handle Product Group (Required, expects ID)
             product_group_id = data.get('product_group')
@@ -358,7 +349,6 @@ class ProductListCreateView(generics.ListCreateAPIView):
                 message="Internal Server Error",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
@@ -559,12 +549,8 @@ class GetProductGroups(APIView):
             status_code=status.HTTP_200_OK
         )
 
-
 # search for products
 class SearchProduct(APIView):
-
-
-    print("aerch view")
 
     permissions_class = []
     authentication_class = []
@@ -598,3 +584,6 @@ class SearchProduct(APIView):
             message="search results successfully returned",
             status_code=status.HTTP_200_OK
         )
+
+
+ 

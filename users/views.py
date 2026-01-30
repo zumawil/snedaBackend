@@ -500,4 +500,41 @@ class GetUserSession(APIView):
             status_code=status.HTTP_200_OK
         )
 
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Q
 
+
+class SearchUsers(APIView):
+
+    permissions_class = [IsAdminUser]
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        search_query = request.query_params.get('q', '')
+        users = CustomUser.objects.filter(
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query) |
+            Q(email__icontains=search_query)
+        )
+        
+        if users:
+            paginator = self.pagination_class()
+            paginated_users = paginator.paginate_queryset(users, request)
+            
+            serializer = UserSerializer(paginated_users, many=True)
+            data = paginator.get_paginated_response(serializer.data).data
+
+            return api_response(
+                success=True,
+                data=data,
+                message="Users retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+        
+        return api_response(
+            success=False,
+            data=None,
+            message="No Users found from query",
+            status_code=status.HTTP_200_OK,
+            error=True
+        )

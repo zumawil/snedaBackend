@@ -65,8 +65,18 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         returns serialized data for order details
         without the items in the order
     """
+    effective_status = serializers.SerializerMethodField()
+    is_cancellable = serializers.SerializerMethodField()
+    
+    def get_effective_status(self, obj):
+        return obj.effective_status
+
+    def get_is_cancellable(self, obj):
+        return obj.is_cancellable()
+
+    user = UserSerializer(read_only=True)
     
     class Meta:
         model = Order
-        fields = ['id','total_amount', 'created_at']
-        read_only_fields = ['total_amount','status', 'created_at']
+        fields = ['id', 'total_amount', 'created_at', 'effective_status', 'is_cancellable', 'user']
+        read_only_fields = ['total_amount', 'created_at', 'is_cancellable', 'effective_status', 'user']

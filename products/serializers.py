@@ -103,6 +103,9 @@ class ProductImageCreateSerializer(serializers.ModelSerializer):
         model = ProductImage
         fields = ['url', 'product', 'alt_text']
 
+    def create(self, validated_data):
+        return ProductImage.objects.create(**validated_data)
+
 
 #  serializer for retrieving product details
 class ProductSerializer(serializers.ModelSerializer):
