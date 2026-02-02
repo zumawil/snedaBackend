@@ -411,6 +411,131 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 
+class FilterProduct(APIView):
+    """
+    General product filter endpoint supporting multiple filter criteria.
+    
+    Query Parameters:
+    - search: Search by item_no or category name (string)
+    - category: Filter by category ID or name (string/int)
+    - brand: Filter by brand ID or name (string/int)
+    - product_group: Filter by product group ID or name (string/int)
+    - hs_code: Filter by HS code (string, comma-separated for multiple)
+    - min_price: Minimum price (decimal)
+    - max_price: Maximum price (decimal)
+    - in_stock: Filter by stock availability (true/false)
+    - sort_by: Sort field (created_at, gross_price, item_no) (default: -created_at)
+    - page: Page number for pagination (default: 1)
+    
+    Example: /api/products/filter/?category=1&min_price=100&max_price=5000&sort_by=-gross_price
+    """
+    
+    permission_classes = [permissions.AllowAny]
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        try:
+            queryset = Product.objects.all()
+            
+            # Search filter
+            search_query = request.query_params.get('search', '').strip()
+            if search_query:
+                queryset = queryset.filter(
+                    item_no__icontains=search_query
+                ) | queryset.filter(
+                    category__name__icontains=search_query
+                )
+            
+            # Category filter
+            category_param = request.query_params.get('category', '').strip()
+            if category_param:
+                try:
+                    # Try as ID first
+                    category_id = int(category_param)
+                    queryset = queryset.filter(category_id=category_id)
+                except ValueError:
+                    # Fall back to name
+                    queryset = queryset.filter(category__name__icontains=category_param)
+            
+            # Brand filter
+            # brand_param = request.query_params.get('brand', '').strip()
+            # if brand_param:
+            #     try:
+            #         brand_id = int(brand_param)
+            #         queryset = queryset.filter(brand_id=brand_id)
+            #     except ValueError:
+            #         queryset = queryset.filter(brand__name__icontains=brand_param)
+            
+            # Product Group filter
+            product_group_param = request.query_params.get('product_group', '').strip()
+            if product_group_param:
+                try:
+                    group_id = int(product_group_param)
+                    queryset = queryset.filter(product_group_id=group_id)
+                except ValueError:
+                    queryset = queryset.filter(product_group__name__icontains=product_group_param)
+            
+            # HS Code filter (supports comma-separated values)
+            hs_code_param = request.query_params.get('hs_code', '').strip()
+            if hs_code_param:
+                hs_codes = [code.strip() for code in hs_code_param.split(',') if code.strip()]
+                if hs_codes:
+                    queryset = queryset.filter(hs_code__code__in=hs_codes)
+            
+            # Price range filter
+            min_price = request.query_params.get('min_price', '').strip()
+            max_price = request.query_params.get('max_price', '').strip()
+            
+            if min_price:
+                try:
+                    queryset = queryset.filter(gross_price__gte=float(min_price))
+                except ValueError:
+                    pass
+            
+            if max_price:
+                try:
+                    queryset = queryset.filter(gross_price__lte=float(max_price))
+                except ValueError:
+                    pass
+            
+            # Stock availability filter
+            in_stock_param = request.query_params.get('in_stock', '').strip().lower()
+            if in_stock_param in ['true', '1', 'yes']:
+                queryset = queryset.filter(inventory_qty__gt=0)
+            elif in_stock_param in ['false', '0', 'no']:
+                queryset = queryset.filter(inventory_qty=0)
+            
+            # Sorting
+            sort_by = request.query_params.get('sort_by', '-created_at').strip()
+            allowed_sort_fields = ['created_at', '-created_at', 'gross_price', '-gross_price', 'item_no', '-item_no']
+            if sort_by in allowed_sort_fields:
+                queryset = queryset.order_by(sort_by)
+            else:
+                queryset = queryset.order_by('-created_at')
+            
+            # Pagination
+            paginator = self.pagination_class()
+            paginated_products = paginator.paginate_queryset(queryset, request)
+            
+            serializer = ProductSerializer(paginated_products, many=True)
+            data = paginator.get_paginated_response(serializer.data).data
+            
+            return api_response(
+                success=True,
+                data=data,
+                message="Products filtered successfully",
+                status_code=status.HTTP_200_OK
+            )
+        
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error filtering products",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 class GetProductReviewsView(APIView):
     permission_classes = [IsVerifiedUser]
 

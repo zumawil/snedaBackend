@@ -67,16 +67,19 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     """
     effective_status = serializers.SerializerMethodField()
     is_cancellable = serializers.SerializerMethodField()
+    fulfillment_status = serializers.ReadOnlyField(source='get_fulfillment_status')
     
     def get_effective_status(self, obj):
         return obj.effective_status
-
-    def get_is_cancellable(self, obj):
-        return obj.is_cancellable()
-
+    
     user = UserSerializer(read_only=True)
     
     class Meta:
         model = Order
-        fields = ['id', 'total_amount', 'created_at', 'effective_status', 'is_cancellable', 'user']
-        read_only_fields = ['total_amount', 'created_at', 'is_cancellable', 'effective_status', 'user']
+        fields = ['id', 'total_amount', 'created_at', 'effective_status', 
+                  'is_cancellable', 'user',
+                  'fulfillment_status']
+        read_only_fields = ['total_amount', 'created_at', 
+                            'is_cancellable', 
+                            'effective_status', 'user', 
+                            'fulfillment_status']

@@ -13,4 +13,5 @@ urlpatterns = [
     path('products-price-range/', views.GetProductPriceRange.as_view(), name='get-products-price-range'),
     path('product-groups/', views.GetProductGroups.as_view(), name='get-product-groups'),
     path('product/search/', views.SearchProduct.as_view(), name='search product'),
+    path('product/filter/', views.FilterProduct().as_view(), name='filter products'),
 ]

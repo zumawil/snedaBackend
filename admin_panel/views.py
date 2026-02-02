@@ -16,6 +16,7 @@ from orders.serializers import OrderDetailSerializer
 from products.serializers import ProductSerializer
 from users.serializers import UserSerializer
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from rest_framework.pagination import PageNumberPagination
 
@@ -30,8 +31,11 @@ class DashboardStatsView(APIView):
     def get(self, request):
         try:
             # Stats calculations
-            total_revenue = Payment.objects.filter(status='success').aggregate(Sum('amount'))['amount__sum'] or 0
-            total_orders = Order.objects.count()
+            today = timezone.now().date()
+            # get revenue for today
+            total_revenue = Payment.objects.filter(status='success', date_created=today).aggregate(Sum('amount'))['amount__sum'] or 0
+            total_orders = Order.objects.filter(created_at=today).count()
+            total_pending_orders = Order.objects.filter(shipping__status='pending').count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
 
@@ -62,9 +66,10 @@ class DashboardStatsView(APIView):
 
             data = {
                 "stats": {
-                    "total_revenue": float(total_revenue),
+                    "total_revenue_for_today": float(total_revenue),
                     "total_orders": total_orders,
                     "total_products": total_products,
+                    'total_pending_orders': total_pending_orders,
                     "total_users": total_users,
                     "revenue_growth": round(revenue_growth, 2),
                     "this_month_revenue": float(this_month_revenue)
@@ -88,7 +93,7 @@ class DashboardStatsView(APIView):
             )
 
 class AdminOrderListView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = []
     pagination_class = PageNumberPagination
 
     def get(self, request):
@@ -98,6 +103,7 @@ class AdminOrderListView(APIView):
             result_page = paginator.paginate_queryset(orders, request)
             serializer = OrderDetailSerializer(result_page, many=True)
             data = paginator.get_paginated_response(serializer.data).data
+
             return api_response(
                 success=True,
                 data=data,

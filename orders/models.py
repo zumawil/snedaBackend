@@ -32,6 +32,10 @@ class Order(models.Model):
     def effective_status(self):
         return self.compute_status_from_shipping()
 
+
+    def get_fulfillment_status(self):
+        return 'pickup' if self.shipping.pickup else 'delivery'
+
     def is_cancellable(self):
         """Return True if the order is in a state that allows cancellation."""
         return self.effective_status == 'pending'
