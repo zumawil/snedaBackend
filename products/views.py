@@ -246,7 +246,7 @@ class ProductImageDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 class ProductListCreateView(generics.ListCreateAPIView):
-    queryset = Product.objects.all()
+    queryset = Product.objects.order_by('-created_at')
 
     def get_permissions(self):
         if self.request.method == 'GET':
@@ -506,8 +506,14 @@ class FilterProduct(APIView):
                 queryset = queryset.filter(inventory_qty=0)
             
             # Sorting
+            # if sort_by is not provide use -created_at
             sort_by = request.query_params.get('sort_by', '-created_at').strip()
-            allowed_sort_fields = ['created_at', '-created_at', 'gross_price', '-gross_price', 'item_no', '-item_no']
+            allowed_sort_fields = ['created_at', 
+                                   '-created_at', 
+                                   'gross_price', 
+                                   '-gross_price', 
+                                   'item_no', 
+                                   '-item_no']
             if sort_by in allowed_sort_fields:
                 queryset = queryset.order_by(sort_by)
             else:
