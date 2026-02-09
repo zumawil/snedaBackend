@@ -42,14 +42,32 @@ class OrderSerializer(serializers.ModelSerializer):
     # user = UserSerializer(read_only=True)
     items =  OrderItemSerializer(many=True, read_only=True)
     status = serializers.SerializerMethodField()
+    payment = serializers.SerializerMethodField()
+    shipping = serializers.SerializerMethodField()
+
     class Meta:
         model = Order
-        fields = ['id', 'status','total_amount', 'created_at', 'items']
-        read_only_fields = ['total_amount']
+        fields = ['id', 'status','total_amount', 'created_at', 'items', 'payment', 'shipping']
+        read_only_fields = ['total_amount', 'payment', 'created_at']
+
+    def get_shipping(self, obj):
+        from shipping.serializers import ShippingSerializer
+        shipping = getattr(obj, 'shipping', None)
+        if shipping:
+            return ShippingSerializer(shipping).data
+        return None
 
     def get_status(self, obj):
         # expose the effective status derived from shipping when present
         return obj.effective_status
+
+    def get_payment(self, obj):
+        from payments.serializers import PaymentSerializer
+
+        payment = obj.get_payment()
+        if payment:
+            return PaymentSerializer(payment).data.get('status')
+        return None
 
 class OrderStatusUpdateSerializer(serializers.Serializer):
     """Serializer for updating order status with proper OpenAPI schema documentation"""
@@ -66,20 +84,33 @@ class OrderDetailSerializer(serializers.ModelSerializer):
         without the items in the order
     """
     effective_status = serializers.SerializerMethodField()
-    is_cancellable = serializers.SerializerMethodField()
+    # is_cancellable = serializers.SerializerMethodField()
     fulfillment_status = serializers.ReadOnlyField(source='get_fulfillment_status')
     
+    payment = serializers.SerializerMethodField()
+
+    def get_payment(self, obj):
+        from payments.serializers import PaymentSerializer
+
+        payment = obj.get_payment()
+        if payment:
+            return PaymentSerializer(payment).data.get('status')
+        return None
+
     def get_effective_status(self, obj):
         return obj.effective_status
+
+    # def get_is_cancellable(self, obj):
+    #     return obj.is_cancellable
     
     user = UserSerializer(read_only=True)
     
     class Meta:
         model = Order
-        fields = ['id', 'total_amount', 'created_at', 'effective_status', 
-                  'is_cancellable', 'user',
+        fields = ['id', 'total_amount','payment',
+         'created_at', 'effective_status', 
+                  'user',
                   'fulfillment_status']
-        read_only_fields = ['total_amount', 'created_at', 
-                            'is_cancellable', 
+        read_only_fields = ['total_amount','payment', 'created_at', 
                             'effective_status', 'user', 
                             'fulfillment_status']

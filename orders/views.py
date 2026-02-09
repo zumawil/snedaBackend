@@ -49,7 +49,7 @@ class OrderView(APIView):
                 )
             else:
                 # List all orders for user
-                orders = Order.objects.filter(user=request.user)
+                orders = Order.objects.filter(user=request.user).order_by('-created_at')
                 serializer = OrderSerializer(orders, many=True)
                 return api_response(
                     success=True,
@@ -311,7 +311,7 @@ class OrderDetailView(APIView):
     """
     def get(self, request):
         try:
-            orders = Order.objects.filter(user=request.user)
+            orders = Order.objects.filter(user=request.user).order_by('-created_at')
             serializer = OrderDetailSerializer(orders, many=True)
             return api_response(
                 success=True,

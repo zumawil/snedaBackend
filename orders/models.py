@@ -11,6 +11,9 @@ class Order(models.Model):
     def __str__(self):
         return f"order for {self.user.email}"
 
+    def get_payment(self):
+        return self.payments.first()
+
     def compute_status_from_shipping(self):
         """
         Derive an effective order status from the related Shipping record when present.

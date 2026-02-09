@@ -28,9 +28,15 @@ class ProductImageSerializer(serializers.ModelSerializer):
         extra_kwargs = {'product': {'required': False}}
 
 class CategorySerializer(serializers.ModelSerializer):
+    products_count = serializers.SerializerMethodField(read_only=True)
+
+    def get_products_count(self, obj):
+        return obj.products.count()
+    
     class Meta:
         model = Category
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'products_count']
+        read_only_fields = ['products_count']
 
 
 class ProductCreateUpdateSerializer(serializers.ModelSerializer):   

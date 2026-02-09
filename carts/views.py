@@ -86,6 +86,7 @@ def bill_user(amount, email):
         "email": email,
         "amount": amount,   # amount in pesewas (₵50.00 = 5000)
         "currency": "GHS",  # GHS works with Paystack
+        # paystack callback url
         "callback_url": f"{os.getenv('APP_URL')}payments/callback/"
     }
 
@@ -213,6 +214,14 @@ class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 from orders.models import Order, OrderItem
 
+# user sends a payment intent here and idempotency is generated on the server
+class PaymentIntentView(APIView):
+    permission_classes = [IsVerifiedUser]
+
+    def post(self, request):
+        pass
+        
+
 class CheckoutView(APIView):
     permission_classes = [IsVerifiedUser]
 
@@ -270,7 +279,7 @@ class CheckoutView(APIView):
                 for item in items:
                     # Try to reserve stock atomically
                     updated = Product.objects.filter(
-                        pk=item.product.pk,
+                        pk=item.product.item_no,
                         inventory_qty__gte=item.quantity  # Ensure sufficient stock
                     ).update(inventory_qty=F('inventory_qty') - item.quantity)
                     
@@ -314,8 +323,8 @@ class CheckoutView(APIView):
             order.save()
             logger.info(f"Order {order.id} created during checkout for user {request.user.email}")
 
-            # Clear cart
-            cart.items.all().delete()
+            # Clear cart only when payment is successful
+            # cart.items.all().delete()
 
             CheckoutAttempt.objects.create(
                 key = idempotency_key,
@@ -537,4 +546,22 @@ class ClearCartView(APIView):
                 error="Cart not found",
                 message="Cart not found for user",
                 status_code=status.HTTP_404_NOT_FOUND
+            )
+
+class GetCartCountView(APIView):
+    def get(self, request):
+        try:
+            cart = Cart.objects.get(user=request.user)
+            return api_response(
+                success=True,
+                data={"count": cart.items.count()},
+                message="Cart count retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except Cart.DoesNotExist:
+            return api_response(
+                success=True,
+                data={"count": 0},
+                message="Cart count retrieved successfully",
+                status_code=status.HTTP_200_OK
             )

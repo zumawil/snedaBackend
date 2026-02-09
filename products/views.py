@@ -121,6 +121,77 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 #             message="Category deleted successfully",
 #             status_code=status.HTTP_204_NO_CONTENT
 #         )
+from django.db.models import Q
+
+class GetProductsByCategory(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        try:
+            category_name = [name.strip() for name in request.query_params.get('category', '').split(',')]
+
+            if category_name == ['']:
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="No category provided",
+                    message="Please provide a category",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            else:
+                # build dynamic query for category name
+                query = Q()
+                for name in category_name:
+                    query |= Q(category__name__icontains=name)
+                products = Product.objects.filter(query)
+
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(products, request)
+            if page is not None:
+                serializer = ProductSerializer(page, many=True)
+                data = paginator.get_paginated_response(serializer.data).data
+                return api_response(
+                    success=True,
+                    data=data,
+                    message="Products retrieved successfully",
+                    status_code=status.HTTP_200_OK
+                )
+
+            
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Internal Server Error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )   
+
+class GetCategoriesView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        try:
+            categories = Category.objects.all()
+            serializer = CategorySerializer(categories, many=True)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Categories retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Internal Server Error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class ProductImageListView(generics.ListCreateAPIView):
     """
@@ -410,7 +481,6 @@ class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
             status_code=status.HTTP_204_NO_CONTENT
         )
 
-
 class FilterProduct(APIView):
     """
     General product filter endpoint supporting multiple filter criteria.
@@ -458,13 +528,13 @@ class FilterProduct(APIView):
                     queryset = queryset.filter(category__name__icontains=category_param)
             
             # Brand filter
-            # brand_param = request.query_params.get('brand', '').strip()
-            # if brand_param:
-            #     try:
-            #         brand_id = int(brand_param)
-            #         queryset = queryset.filter(brand_id=brand_id)
-            #     except ValueError:
-            #         queryset = queryset.filter(brand__name__icontains=brand_param)
+            brand_param = request.query_params.get('brand', '').strip()
+            if brand_param:
+                try:
+                    brand_id = int(brand_param)
+                    queryset = queryset.filter(brand_id=brand_id)
+                except ValueError:
+                    queryset = queryset.filter(brand__name__icontains=brand_param)
             
             # Product Group filter
             product_group_param = request.query_params.get('product_group', '').strip()
@@ -481,6 +551,11 @@ class FilterProduct(APIView):
                 hs_codes = [code.strip() for code in hs_code_param.split(',') if code.strip()]
                 if hs_codes:
                     queryset = queryset.filter(hs_code__code__in=hs_codes)
+
+            # OEM filter  (to be added later)
+            # oem_param = request.query_params.get('oem', '').strip()
+            # if oem_param:
+            #     queryset = queryset.filter(oem__icontains=oem_param)
             
             # Price range filter
             min_price = request.query_params.get('min_price', '').strip()

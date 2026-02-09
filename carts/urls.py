@@ -11,4 +11,5 @@ urlpatterns = [
     path('decrement-product-quantity-in-cart/<str:product_pk>/', views.DecreMentProductQuantityInCartView.as_view(), name='decrement-product-quantity-in-cart'),
     path('increment-product-quantity-in-cart/<str:product_pk>/', views.IncrementProductQuantityInCartView.as_view(), name='increment-product-quantity-in-cart'),
     path('clear-cart/', views.ClearCartView.as_view(), name='clear-cart'),
+    path('get-cart-count/', views.GetCartCountView.as_view(), name='get-cart-count')
 ]

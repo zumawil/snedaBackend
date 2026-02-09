@@ -41,6 +41,8 @@ def send_otp_to_user(user):
         [user.email],
     )
 
+    return otp
+
 def verify_user_otp(user, otp_input):
     if not user.otp_secret:
         return False
@@ -121,11 +123,11 @@ class SignupUser(APIView):
         if serializer.is_valid():
             user = serializer.save()
 
-            send_otp_to_user(user)
+            otp = send_otp_to_user(user)
 
             return api_response(
                 success=True,
-                data=None,
+                data={'otp':otp},
                 message="User created successfully",
                 status_code=status.HTTP_201_CREATED
             )

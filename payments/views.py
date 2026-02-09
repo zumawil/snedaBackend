@@ -19,6 +19,8 @@ from carts.views import to_pesewas, bill_user
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from utils.apiResponse import api_response
+from carts.models import Cart
+from django.shortcuts import redirect
 
 load_dotenv()
 
@@ -216,29 +218,32 @@ class PaymentCallback(APIView):
         success, message = verify_payment(reference)
         
         if success:
-            return api_response(
-                success=True,
-                data=None,
-                message=message,
-                status_code=status.HTTP_200_OK
-            )
+            # can clear cart now
+            payment = Payment.objects.get(paystack_reference=reference)
+            
+            cart = Cart.objects.filter(user=payment.order.user).first()
+            if cart:
+                cart.items.all().delete()
+
+            # return api_response(
+            #     success=True,
+            #     data=None,
+            #     message=message,
+            #     status_code=status.HTTP_200_OK
+            # )
+
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+            return redirect(f'{frontend_url}/payment/success')
         else:
-            return api_response(
-                success=False,
-                data=None,
-                error=message,
-                message="Payment verification failed",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+            return redirect(f'{frontend_url}/payment/failure')
 
 @method_decorator(csrf_exempt, name='dispatch')
 class WebhookView(APIView):
     """
     webhook for paystack payment gateway
     """
-
     def post(self, request):
-
         # 1. Verify signature
         signature = request.headers.get('x-paystack-signature', None)
         if not signature:
@@ -279,21 +284,33 @@ class WebhookView(APIView):
             # 3. Get payment object by reference
             try:
                 payment = Payment.objects.get(paystack_reference=reference, is_processed=False)
-                payment.transaction_id = str(payment_id)  
+                print("payment found", payment)
+                payment.transaction_id = str(payment_id)
                 
                 if payment_status == 'success':
                     payment.status = 'success'
+                    print("payment succeess")
+                    # clear cart here
+                    cart = Cart.objects.filter(user=payment.order.user).first()
+                    if cart:
+                        cart.items.all().delete()
+
+                    # update product stock
+                    #update_product_stock(payment.order)
                     
                     
                 elif payment_status == 'abandoned':
                     payment.status = 'abandoned'
+                    print("payment abandoned")
                 else:
                     payment.status = 'failed'
+                    print("payment failed")
                 
                 payment.method = method
                 payment.is_processed = True
                 # Add explicit save with force_update
                 payment.save()
+                print("payment saved", payment.status)
             
                 # Verify the save worked
                 payment.refresh_from_db()
@@ -328,6 +345,9 @@ class WebhookView(APIView):
                 payment.status = 'abandoned'
                 payment.is_processed = True
                 payment.save()
+                #  restore payment stcok 
+                self.restore_product_stock(payment.order)
+
             except Payment.DoesNotExist:
                 print(f"Abandoned payment with reference {reference} not found")
         # respond 200 to Paystack
@@ -349,12 +369,12 @@ class WebhookView(APIView):
         for order_item in order.items.all():
             # Update stock atomically
             updated = Product.objects.filter(
-                id=order_item.product.id, # get the product id of the order item
-                stock__gte=order_item.quantity # check if the stock of the product is greate than the item requested
-            ).update(stock=F('stock') - order_item.quantity) # update it directly in DB to prevent race conditions
+                pk=order_item.product.item_no, # get the product id of the order item
+                inventory_qty__gte=order_item.quantity # check if the stock of the product is greate than the item requested
+            ).update(inventory_qty=F('inventory_qty') - order_item.quantity) # update it directly in DB to prevent race conditions
             
             if updated == 0:
-                print(f"Warning: Insufficient stock for product {order_item.product.name}")
+                print(f"Warning: Insufficient stock for product {order_item.product.item_no}")
 
     def restore_product_stock(self, order):
         """Restore product stock when payment fails."""
@@ -363,5 +383,5 @@ class WebhookView(APIView):
         
         for order_item in order.items.all():
             Product.objects.filter(
-                id=order_item.product.id
-            ).update(stock=F('stock') + order_item.quantity)
+                pk=order_item.product.item_no
+            ).update(inventory_qty=F('inventory_qty') + order_item.quantity)
