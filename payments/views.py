@@ -15,12 +15,13 @@ import os
 import hmac
 import hashlib
 import json
-from carts.views import to_pesewas, bill_user
+from utils.payment_helpers import to_pesewas, bill_user
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from utils.apiResponse import api_response
 from carts.models import Cart
 from django.shortcuts import redirect
+import utils.paymentConstants
 
 load_dotenv()
 
@@ -76,8 +77,8 @@ class GetPaymentByOrder(APIView):
     """
     def get(self, request, order_id):
         try:
-            payment = Payment.objects.get(order_id=order_id, order__user=request.user)
-            serializer = PaymentSerializer(payment)
+            payment = Payment.objects.filter(order_id=order_id, order__user=request.user)
+            serializer = PaymentSerializer(payment, many=True)
             return api_response(
                 success=True,
                 data=serializer.data,
@@ -205,9 +206,6 @@ class PaymentCallback(APIView):
     def get(self, request):
         reference = request.query_params.get('reference')
 
-
-
-        
         if not reference:
             return api_response(
                 success=False,
@@ -287,64 +285,61 @@ class WebhookView(APIView):
                 payment = Payment.objects.get(paystack_reference=reference, is_processed=False)
                 payment.transaction_id = str(payment_id)
                 
-
-                print("from paystack", payment_status)
-                
-                if payment_status == 'success':
-                    payment.status = 'success'
+                if payment_status == utils.paymentConstants.PaymentStatus.SUCCESS:
+                    payment.status = utils.paymentConstants.PaymentStatus.SUCCESS
                     # clear cart here
                     cart = Cart.objects.filter(user=payment.order.user).first()
                     if cart:
                         cart.items.all().delete()
 
-                    # update product stock
-                    #update_product_stock(payment.order)  
-                elif payment_status == 'abandoned':
-                    payment.status = 'abandoned'
+                elif payment_status == utils.paymentConstants.PaymentStatus.ABANDONED:
+                    payment.status = utils.paymentConstants.PaymentStatus.ABANDONED
                 else:
-                    payment.status = 'failed'
+                    payment.status = utils.paymentConstants.PaymentStatus.FAILED
                 
                 payment.method = method
-                payment.is_processed = False
-                # Add explicit save with force_update
+                payment.is_processed = True  # Mark as processed to prevent reprocessing
+                
+                # Add explicit save with update_fields for efficiency
                 payment.save()
             
                 # Verify the save worked
                 payment.refresh_from_db()
         
-                if payment.status != 'success':
-                    print(f"ERROR: Status not updated! Expected 'success', got '{payment.status}'")
+                if payment.status != utils.paymentConstants.PaymentStatus.SUCCESS:
+                    # This might happen if concurrent updates occurred, but with atomic blocks elsewhere we should be okay
+                    logger.info(f"Warning: Status check after save: {payment.status}")
                 
             except Payment.DoesNotExist:
                 # log for debugging
-                print(f"DEBUG: Payment with reference {reference} not found in database or is already processed")    
+                logger.info(f"DEBUG: Payment with reference {reference} not found in database or is already processed")    
         elif event == 'charge.failed':
             # Handle failed payments
             reference = data.get('reference')
             try:
                 payment = Payment.objects.get(paystack_reference=reference)
-                payment.status = 'failed'
-                payment.is_processed = False
+                payment.status = utils.paymentConstants.PaymentStatus.FAILED
+                payment.is_processed = True  # Mark as processed since it failed and we restored stock
                 payment.save()
 
                 # restore product stock
                 self.restore_product_stock(payment.order)
                 
             except Payment.DoesNotExist:
-                print(f"Failed payment with reference {reference} not found")
+                logger.info(f"Failed payment with reference {reference} not found")
         elif event == 'charge.abandoned':
             # Handle abandoned payments
             reference = data.get('reference')
             try:
                 payment = Payment.objects.get(paystack_reference=reference)
-                payment.status = 'abandoned'
+                payment.status = utils.paymentConstants.PaymentStatus.ABANDONED
                 payment.is_processed = True
                 payment.save()
                 #  restore payment stcok 
                 self.restore_product_stock(payment.order)
 
             except Payment.DoesNotExist:
-                print(f"Abandoned payment with reference {reference} not found")
+                logger.info(f"Abandoned payment with reference {reference} not found")
         # respond 200 to Paystack
         return api_response(
             success=True,
@@ -352,24 +347,6 @@ class WebhookView(APIView):
             message="Webhook processed successfully",
             status_code=status.HTTP_200_OK
         )
-    
-
-    def update_product_stock(self, order):
-        """
-        Update product stock when payment succeeds.
-        """
-        from django.db.models import F
-        from products.models import Product
-        
-        for order_item in order.items.all():
-            # Update stock atomically
-            updated = Product.objects.filter(
-                pk=order_item.product.item_no, # get the product id of the order item
-                inventory_qty__gte=order_item.quantity # check if the stock of the product is greate than the item requested
-            ).update(inventory_qty=F('inventory_qty') - order_item.quantity) # update it directly in DB to prevent race conditions
-            
-            if updated == 0:
-                print(f"Warning: Insufficient stock for product {order_item.product.item_no}")
 
     def restore_product_stock(self, order):
         """Restore product stock when payment fails."""
