@@ -19,7 +19,13 @@ class Payment(models.Model):
         ('abandoned', 'Abandoned'),        # Paystack -> 'abandoned'
     ], default='pending')
     paystack_reference = models.CharField(max_length=100, blank=True, null=True)
+    authorization_url = models.URLField(max_length=500, blank=True, null=True)  # Paystack payment URL
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
+
+    retry_count = models.IntegerField(default=0)  # Track retry attempts
+    last_retry_at = models.DateTimeField(null=True, blank=True)
+    max_retries = models.IntegerField(default=3)  # Maximum number of retries
+    
     date_created = models.DateTimeField(auto_now_add=True)
     is_processed = models.BooleanField(default=False) # to make payment processed to 
                                                       # prevent duplicate webhook effects on DB
