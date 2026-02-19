@@ -18,7 +18,7 @@ from utils.normalize_errors import normalize_errors
 from .models import CustomUser
 
 import pyotp
-from django.core.mail import send_mail
+from utils.sendEmail import send_otp_email
 
 from dotenv import load_dotenv
 import os
@@ -34,12 +34,35 @@ def send_otp_to_user(user):
     totp = pyotp.TOTP(secret, interval=300)
     otp = totp.now()
 
-    send_mail(
-        "Your verification code",
-        f"Your OTP is: {otp}",
-        "noreply@yourapp.com",
-        [user.email],
+    otp_html = f"""
+    <!DOCTYPE html>
+    <html>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; margin: 0; padding: 0;">
+            <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
+                <div style="background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); padding: 40px 20px; text-align: center;">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Verification Required</h1>
+                </div>
+                <div style="padding: 40px; text-align: center;">
+                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Thank you for choosing our platform. To complete your verification, please use the following One-Time Password (OTP):</p>
+                    <div style="background-color: #f3f4f6; border-radius: 12px; padding: 20px 40px; display: inline-block; margin-bottom: 24px; border: 1px solid #e5e7eb;">
+                        <span style="font-size: 36px; font-weight: 800; color: #1f2937; letter-spacing: 8px; font-family: 'Courier New', Courier, monospace;">{otp}</span>
+                    </div>
+                    <p style="color: #6b7280; font-size: 14px; line-height: 1.5;">This code is valid for <b>5 minutes</b>. If you did not request this, please ignore this email or contact support if you have concerns.</p>
+                </div>
+                <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
+                    <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+    </html>
+    """
+    
+    r = send_otp_email(
+        user.email,
+        "Your verification code from Sneda Ecommerce",
+        otp_html,
     )
+    print(r)
 
     return otp
 
@@ -57,6 +80,7 @@ def verify_user_otp(user, otp_input):
 class VerifyOTPView(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+    throttle_scope = 'sensitive'
 
     def post(self, request):
         email = request.data.get("email")
@@ -115,8 +139,16 @@ class VerifyOTPView(APIView):
             )
 
 class SignupUser(APIView):
+
+    """
+       sigunu user endpoint , 
+       has a sensitive throttling mechanism which allows 
+       5 request in a minutes 
+    """
+
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+    throttle_scope = 'sensitive'
 
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data)
@@ -148,6 +180,7 @@ class CookieJWTLoginView(TokenObtainPairView):
     
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'sensitive'
     
     def post(self, request, *args, **kwargs):
         user_email = request.data.get("email", None)
@@ -370,6 +403,7 @@ class TokenGenerator:
 
 class ChangePasswordRequestView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'sensitive'
 
     def post(self, request):
         email  = request.data.get('email')
@@ -394,11 +428,31 @@ class ChangePasswordRequestView(APIView):
 
         app_url = os.environ.get("APP_URL", "http://localhost:3000")
         password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={url_token}"
-        send_mail(
-            "You requested for a password chnage",
-            f"your password reset link is {password_reset_url} \n link is valid for 15 minutes",
-            "noreply@yourapp.com",
+        reset_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; margin: 0; padding: 0;">
+            <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
+                <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 40px 20px; text-align: center;">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Password Reset</h1>
+                </div>
+                <div style="padding: 40px; text-align: center;">
+                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">We received a request to reset your password. Click the button below to set a new password for your account.</p>
+                    <a href="{password_reset_url}" style="display: inline-block; background-color: #3b82f6; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-weight: 600; text-decoration: none; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);">Reset Password</a>
+                    <p style="color: #9ca3af; font-size: 14px; margin-top: 35px; line-height: 1.5;">This link is valid for <b>15 minutes</b>. If you didn't request a password reset, you can safely ignore this email.</p>
+                </div>
+                <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
+                    <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        send_otp_email(
             [user.email],
+            "You requested for a password change",
+            reset_html,
         )
 
         return api_response(
@@ -412,6 +466,7 @@ class ChangePasswordRequestView(APIView):
 #  the link sent from change password request view
 class ResetPasswordConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = 'sensitive'
 
     def get(self, request):
         uid = request.query_params.get('uid')

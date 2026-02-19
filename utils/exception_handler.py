@@ -1,7 +1,7 @@
 from rest_framework.views import exception_handler
 from rest_framework.response import Response
 from rest_framework import status as http_status
-from .normalize_errors import normalize_errors
+from django.conf import settings
 
 
 def custom_exception_handler(exc, context):
@@ -14,12 +14,14 @@ def custom_exception_handler(exc, context):
 
     if response is None:
         # Unexpected error (500, etc.) - not handled by DRF
+        error_message = str(exc) if settings.DEBUG else "An internal server error occurred"
+        
         return Response(
             {
                 "success": False,
                 "data": None,
                 "message": "An unexpected error occurred on the server",
-                "error": str(exc),
+                "error": error_message,
             },
             status=http_status.HTTP_500_INTERNAL_SERVER_ERROR
         )
