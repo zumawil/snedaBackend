@@ -308,36 +308,14 @@ class WebhookView(APIView):
                 order = payment.order
                 order_items_summary = "\n".join([f"- {item.product.item_no} x {item.quantity}: GHS {item.get_total_price()}" for item in order.items.all()])
                 
-                email_html = f"""
-                <!DOCTYPE html>
-                <html>
-                <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; margin: 0; padding: 0;">
-                    <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
-                        <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 20px; text-align: center;">
-                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Order Confirmed!</h1>
-                            <p style="color: #d1fae5; margin-top: 8px; font-size: 16px;">Order #{order.id}</p>
-                        </div>
-                        <div style="padding: 40px;">
-                            <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {order.user.first_name or 'Valued Customer'},</p>
-                            <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Your payment of <b>GHS {payment.amount}</b> has been successfully processed. We're now preparing your order for shipment.</p>
-                            
-                            <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; border: 1px solid #e5e7eb; margin-bottom: 24px;">
-                                <h2 style="font-size: 18px; color: #1f2937; margin-top: 0; margin-bottom: 16px;">Order Summary</h2>
-                                <pre style="white-space: pre-wrap; font-family: inherit; color: #4b5563; margin: 0; font-size: 14px;">{order_items_summary}</pre>
-                                <div style="margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; font-weight: 700; color: #1f2937;">
-                                    Total: GHS {order.total_amount}
-                                </div>
-                            </div>
-                            
-                            <p style="color: #6b7280; font-size: 14px; line-height: 1.5;">You can track your order status in your profile. Thank you for shopping with Sneda Ecommerce!</p>
-                        </div>
-                        <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
-                            <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
-                        </div>
-                    </div>
-                </body>
-                </html>
-                """
+                from utils.email_templates import get_order_confirmation_html
+                email_html = get_order_confirmation_html(
+                    order_id=order.id, 
+                    user_first_name=order.user.first_name, 
+                    amount=payment.amount, 
+                    order_items_summary=order_items_summary, 
+                    total_amount=order.total_amount
+                )
                 
                 send_order_confirmation_email(
                     order.user.email,
