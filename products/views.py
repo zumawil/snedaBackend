@@ -13,7 +13,8 @@ from django.db.models.functions import Lower
 
 # for api view pagination
 from rest_framework.pagination import PageNumberPagination
-
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 
 from .serializers import (
     ProductImageSerializer, 
@@ -23,6 +24,9 @@ from .serializers import (
 from .models import Category, Product, ProductImage, Brand, HSCode, ProductGroup
 from utils.apiResponse import api_response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.core.cache import cache
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
 # Create your views here.
 
 # Product API Views
@@ -126,14 +130,14 @@ from django.db.models import Q
 class GetProductsByCategory(APIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
-
     pagination_class = PageNumberPagination
 
     def get(self, request):
         try:
-            category_name = [name.strip() for name in request.query_params.get('category', '').split(',')]
-
-            if category_name == ['']:
+            # Parse category query params
+            category_names = [name.strip() for name in request.query_params.get('category', '').split(',')]
+            # if category namea is empty
+            if not any(category_names):
                 return api_response(
                     success=False,
                     data=None,
@@ -141,26 +145,44 @@ class GetProductsByCategory(APIView):
                     message="Please provide a category",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
-            else:
-                # build dynamic query for category name
-                query = Q()
-                for name in category_name:
-                    query |= Q(category__name__icontains=name)
-                products = Product.objects.filter(query)
 
-            paginator = self.pagination_class()
-            page = paginator.paginate_queryset(products, request)
-            if page is not None:
-                serializer = ProductSerializer(page, many=True)
-                data = paginator.get_paginated_response(serializer.data).data
+            # Create a cache key that is consistent and includes the page number
+            categories_key = "_".join(sorted(category_names))
+            page_number = request.query_params.get('page', 1)
+            cache_key = f"products_by_category_{categories_key}_page_{page_number}"
+
+            # Check cache first
+            cached_data = cache.get(cache_key)
+            if cached_data:
                 return api_response(
                     success=True,
-                    data=data,
+                    data=cached_data,
                     message="Products retrieved successfully",
                     status_code=status.HTTP_200_OK
                 )
 
-            
+            # Build dynamic query for category names
+            query = Q()
+            for name in category_names:
+                query |= Q(category__name__icontains=name)
+            products = Product.objects.filter(query).order_by('id')  # consistent ordering
+
+            # Paginate queryset
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(products, request)
+            serializer = ProductSerializer(page, many=True)
+            data = paginator.get_paginated_response(serializer.data).data
+
+            # Cache the serialized paginated response, not the queryset
+            cache.set(cache_key, data, timeout=60 * 60)  # cache for 1 hour
+
+            return api_response(
+                success=True,
+                data=data,
+                message="Products retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+
         except Exception as e:
             return api_response(
                 success=False,
@@ -168,7 +190,34 @@ class GetProductsByCategory(APIView):
                 error=str(e),
                 message="Internal Server Error",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )   
+            )
+
+@receiver([post_save, post_delete], sender=Product)
+def invalidate_product_related_caches(sender, **kwargs):
+    # Only available in django-redis cache backend
+    if hasattr(cache, 'delete_pattern'):
+        cache.delete_pattern("products_by_category_*")
+        cache.delete_pattern("products_list_page_*")
+        cache.delete_pattern("filter_products_*")
+        cache.delete_pattern("search_products_*")
+    elif hasattr(cache, 'clear'):
+        cache.clear()
+
+@receiver([post_save, post_delete], sender=Category)
+def invalidate_category_caches(sender, **kwargs):
+    # cache invalidation for GetCategoriesView
+    if hasattr(cache, 'delete_pattern'):
+        cache.delete_pattern("categories_list_all*")
+    elif hasattr(cache, 'clear'):
+        cache.clear()
+
+@receiver([post_save, post_delete], sender=ProductGroup)
+def invalidate_product_group_caches(sender, **kwargs):
+    # cache invalidation for GetProductGroups
+    if hasattr(cache, 'delete_pattern'):
+        cache.delete_pattern("product_groups_all*")
+    elif hasattr(cache, 'clear'):
+        cache.clear()
 
 class GetCategoriesView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -176,11 +225,25 @@ class GetCategoriesView(APIView):
 
     def get(self, request):
         try:
+            cache_key = "categories_list_all"
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                return api_response(
+                    success=True,
+                    data=cached_data,
+                    message="Categories retrieved successfully",
+                    status_code=status.HTTP_200_OK
+                )
+
             categories = Category.objects.all()
             serializer = CategorySerializer(categories, many=True)
+            data = serializer.data
+            
+            cache.set(cache_key, data, timeout=60 * 60)  # cache categories for 1 hour
+
             return api_response(
                 success=True,
-                data=serializer.data,
+                data=data,
                 message="Categories retrieved successfully",
                 status_code=status.HTTP_200_OK
             )
@@ -330,23 +393,34 @@ class ProductListCreateView(generics.ListCreateAPIView):
         return ProductSerializer
     
     def list(self, request, *args, **kwargs):
+        page_number = request.query_params.get('page', 1)
+        cache_key = f"products_list_page_{page_number}"
+        
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return api_response(
+                success=True,
+                data=cached_data,
+                message="Products retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+
         queryset = self.get_queryset()
         page = self.paginate_queryset(queryset)
 
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             data = self.get_paginated_response(serializer.data).data
-            return api_response(
-                success=True,
-                data=data,
-                message="Products retrieved successfully",
-                status_code=status.HTTP_200_OK
-            )
+        else:
+            serializer = self.get_serializer(queryset, many=True)
+            data = serializer.data
 
-        serializer = self.get_serializer(queryset, many=True)
+        # cache generic product list for 5 min
+        cache.set(cache_key, data, timeout=60 * 5)
+
         return api_response(
             success=True,
-            data=serializer.data,
+            data=data,
             message="Products retrieved successfully",
             status_code=status.HTTP_200_OK
         )
@@ -505,6 +579,24 @@ class FilterProduct(APIView):
 
     def get(self, request):
         try:
+            # Generate deterministic cache key based on query params
+            params_dict = dict(request.query_params)
+            # Standardize by sorting keys so that same filters give same key
+            sorted_params = tuple(sorted((k, tuple(sorted(v))) for k, v in params_dict.items()))
+            import hashlib
+            params_hash = hashlib.md5(str(sorted_params).encode('utf-8')).hexdigest()
+            page_number = request.query_params.get('page', 1)
+            cache_key = f"filter_products_hash_{params_hash}_page_{page_number}"
+
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                return api_response(
+                    success=True,
+                    data=cached_data,
+                    message="Products filtered successfully",
+                    status_code=status.HTTP_200_OK
+                )
+
             queryset = Product.objects.all()
             
             # Search filter
@@ -601,6 +693,9 @@ class FilterProduct(APIView):
             serializer = ProductSerializer(paginated_products, many=True)
             data = paginator.get_paginated_response(serializer.data).data
             
+            # Cache generic product filter for 5 min
+            cache.set(cache_key, data, timeout=60 * 5)
+
             return api_response(
                 success=True,
                 data=data,
@@ -746,11 +841,26 @@ class GetProductGroups(APIView):
     authentication_classes = []
 
     def get(self, request):
+        cache_key = "product_groups_all"
+        cached_data = cache.get(cache_key)
+        
+        if cached_data:
+            return api_response(
+                success=True,
+                data=cached_data,
+                message="Product groups retrieved successfully",
+                status_code=status.HTTP_200_OK
+            )
+
         groups = ProductGroup.objects.all()
         serializer = ProductGroupSerializer(groups, many=True)
+        data = serializer.data
+        
+        cache.set(cache_key, data, timeout=60 * 60)
+        
         return api_response(
             success=True,
-            data=serializer.data,
+            data=data,
             message="Product groups retrieved successfully",
             status_code=status.HTTP_200_OK
         )
@@ -773,6 +883,18 @@ class SearchProduct(APIView):
                 error=True,
                 status_code=status.HTTP_400_BAD_REQUEST
             )
+            
+        page_number = request.query_params.get('page', 1)
+        cache_key = f"search_products_{query}_page_{page_number}"
+
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return api_response(
+                success=True,
+                data=cached_data,
+                message="search results successfully returned",
+                status_code=status.HTTP_200_OK
+            )
         
         products = Product.objects.filter(
             item_no__icontains=query
@@ -783,6 +905,9 @@ class SearchProduct(APIView):
 
         serializer = ProductSerializer(page, many=True)
         data = paginator.get_paginated_response(serializer.data).data
+        
+        # cache searches for 5 min
+        cache.set(cache_key, data, timeout=60 * 5)
         
         return api_response(
             success=True,
