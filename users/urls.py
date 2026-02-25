@@ -17,9 +17,9 @@ urlpatterns = [
     path("profile/", UserProfileView.as_view(), name="profile"),
 
     path("logout/", LogoutUserView.as_view(), name="logout"),
-    path('change-password/', ChangePasswordRequestView().as_view(), name="request_passsword_change"),
+    path('change-password/', ChangePasswordRequestView.as_view(), name="request_passsword_change"),
     # expects uid, token, new password and new password as query params
-    path('reset-password/', ResetPasswordView().as_view(), name="reset_passsord"),
+    path('reset-password/', ResetPasswordView.as_view(), name="reset_passsord"),
     path('reset-password-confirm/', ResetPasswordConfirmView.as_view(), name='confirm_password_reset'),
     path('session/', GetUserSession.as_view(), name='get_user_session'),
     path('search/', SearchUsers.as_view(), name='search_users')

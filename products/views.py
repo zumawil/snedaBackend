@@ -165,7 +165,7 @@ class GetProductsByCategory(APIView):
             query = Q()
             for name in category_names:
                 query |= Q(category__name__icontains=name)
-            products = Product.objects.filter(query).order_by('id')  # consistent ordering
+            products = Product.objects.filter(query).order_by('item_no')  # consistent ordering using item_no as primary key
 
             # Paginate queryset
             paginator = self.pagination_class()
@@ -716,7 +716,7 @@ class GetProductReviewsView(APIView):
     permission_classes = [IsVerifiedUser]
 
     def post(self, request):
-        product_id = request.data.get('product')
+        product_id = request.data.get('item_no')
 
         if not product_id:
             return api_response(
@@ -728,11 +728,14 @@ class GetProductReviewsView(APIView):
             )
 
         # Get product or return 404
-        product = get_object_or_404(Product, id=product_id)
+        product = get_object_or_404(Product, item_no=product_id)
 
-        # Serialize all reviews for this product
-        reviews = ReviewsSerializer(product.reviews.all(), many=True)
-        data = self.get_paginated_response(reviews.data).data
+        # Paginate reviews for this product
+        reviews_queryset = product.reviews.all().order_by('-created_at')
+        paginator = PageNumberPagination()
+        paginated_reviews = paginator.paginate_queryset(reviews_queryset, request)
+        serializer = ReviewsSerializer(paginated_reviews, many=True)
+        data = paginator.get_paginated_response(serializer.data).data
 
         return api_response(
             success=True,
