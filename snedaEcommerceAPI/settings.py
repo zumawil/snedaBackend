@@ -114,6 +114,18 @@ DATABASES = {
     }
 }
 
+# Cache Config (Redis)
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",                                     
+        "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1"),  # uses redis logical db
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+
 # email backend
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
@@ -174,8 +186,8 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/day',
-        'user': '1000/day',
+        'anon': '2000/day',
+        'user': '10000/day',
         'sensitive': '5/minute'
     }
 }
