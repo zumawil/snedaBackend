@@ -18,6 +18,7 @@ class Shipping(models.Model):
             ("shipped", "Shipped"),
             ("delivered", "Delivered"),
             ('cancelled', 'Cancelled'),
+            ('approved', 'Approved')
         ],
         default="pending"
     )

@@ -19,6 +19,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from rest_framework.pagination import PageNumberPagination
+from orders.models import Order
 
 # class StandardResultsSetPagination(PageNumberPagination):
 #     page_size = 10

@@ -6,8 +6,9 @@ class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     # Order.status removed — Shipping model is the source of truth for shipment state.
     total_amount = models.DecimalField(default=0, max_digits=10, decimal_places=2)
-    created_at = models.DateTimeField(auto_now_add=True)                
+    created_at = models.DateTimeField(auto_now_add=True) 
 
+    approved = models.BooleanField(null=True)
     def __str__(self):
         return f"order for {self.user.email}"
 

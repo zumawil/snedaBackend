@@ -37,9 +37,13 @@ class OrderView(APIView):
 
     def get(self, request, pk=None):
         try:
+            is_admin = request.user and (request.user.is_staff or request.user.is_superuser)
             if pk:
-                # Get specific order
-                order = get_object_or_404(Order, pk=pk, user=request.user)
+                # Admins can view any order; others only their own
+                if is_admin:
+                    order = get_object_or_404(Order, pk=pk)
+                else:
+                    order = get_object_or_404(Order, pk=pk, user=request.user)
                 serializer = OrderSerializer(order)
                 return api_response(
                     success=True,
@@ -48,8 +52,11 @@ class OrderView(APIView):
                     status_code=status.HTTP_200_OK
                 )
             else:
-                # List all orders for user
-                orders = Order.objects.filter(user=request.user).order_by('-created_at')
+                # Admins see all orders; others only their own
+                if is_admin:
+                    orders = Order.objects.all().order_by('-created_at')
+                else:
+                    orders = Order.objects.filter(user=request.user).order_by('-created_at')
                 serializer = OrderSerializer(orders, many=True)
                 return api_response(
                     success=True,
@@ -241,6 +248,56 @@ class OrderUpdateStatusView(APIView):
                 data=None,
                 error=str(e),
                 message="Error updating order status",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+class OrderApproveView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    """
+    approve order for further processing
+    """
+    def post(self, request, pk):
+        try:
+            order = get_object_or_404(Order, pk=pk)
+            order.approved = True
+            order.save()
+            return api_response(
+                success=True,
+                data=None,
+                message="Order approved successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error approving order",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+class OrderRejectView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    """
+    reject order for further processing
+    """
+    def post(self, request, pk):
+        try:
+            order = get_object_or_404(Order, pk=pk)
+            order.approved = False
+            order.save()
+            return api_response(
+                success=True,
+                data=None,
+                message="Order disapproved successfully",
+                status_code=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return api_response(
+                success=False,
+                data=None,
+                error=str(e),
+                message="Error disapproving order",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 

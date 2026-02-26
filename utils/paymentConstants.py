@@ -13,3 +13,9 @@ class PaymentMethod:
     USSD = "ussd"
     QR = "qr"
     BANK_TRANSFER = "bank_transfer"
+
+class OrderStatus:
+    PENDING = "pending"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"

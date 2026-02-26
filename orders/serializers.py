@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Order, OrderItem
 from users.serializers import UserSerializer
 from products.serializers import ProductSerializer
+from utils.paymentConstants import OrderStatus
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product = ProductSerializer(read_only=True)
@@ -47,7 +48,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'status','total_amount', 'created_at', 'items', 'payment', 'shipping']
+        fields = ['id', 'status','total_amount', 'created_at', 'items', 'payment', 'shipping', 'approved']
         read_only_fields = ['total_amount', 'payment', 'created_at']
 
     def get_shipping(self, obj):
@@ -72,7 +73,7 @@ class OrderSerializer(serializers.ModelSerializer):
 class OrderStatusUpdateSerializer(serializers.Serializer):
     """Serializer for updating order status with proper OpenAPI schema documentation"""
     status = serializers.ChoiceField(
-        choices=['pending', 'shipped', 'delivered', 'cancelled'],
+        choices=[OrderStatus.PENDING, OrderStatus.DELIVERED, OrderStatus.SHIPPED, OrderStatus.CANCELLED],
         help_text="New order status"
     )
 
