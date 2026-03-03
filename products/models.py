@@ -40,8 +40,6 @@ class Product(models.Model):
     box_qty = models.IntegerField(null=True, blank=True)
     inventory_qty = models.IntegerField(default=0)
 
-    #expected_arrival = models.DateField(null=True, blank=True)
-
     gross_price = models.DecimalField(max_digits=10, decimal_places=2)
     brand = models.ForeignKey(Brand, related_name='products', on_delete=models.CASCADE)
 

@@ -16,6 +16,7 @@ import os
 from dotenv import load_dotenv
 
 
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -46,7 +47,6 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 INSTALLED_APPS = [
     'rest_framework',
-    'django_q',
     'drf_yasg',
     'users',
     'products',
@@ -66,17 +66,27 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
 ]
-# django-q config (using Django ORM as broker, no separate Redis/RabbitMQ needed)
-Q_CLUSTER = {
-    'name': 'myproject',
-    'workers': 2, # number of worker processes to runWWW
-    'timeout': 90, # task timeout in seconds
-    'retry': 120, # retry failed tasks after 2 minutes
-    'queue_limit': 50, # max tasks in queue before new tasks are rejected
-    'bulk': 10, # how many tasks to queue for a worker at once
-    'orm': 'default',  # uses your Django DB, no broker needed
-}
+# ── Celery configuration ──────────────────────────────────────────────────────
+# Uses the same Redis instance already configured for caching (logical db 0)
 
+from celery.schedules import crontab
+
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+# Retry failed tasks up to 3 times with a 60-second delay (set per task)
+CELERY_TASK_ACKS_LATE = True          # only ack after the task completes
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1 # one task per worker at a time (safer for payment work)
+# celery beat schedule
+CELERY_BEAT_SCHEDULE = {
+    'expire-reservations-every-minute': {
+        'task': 'products.tasks.expire_reservations',
+        'schedule': crontab(minute='*/1'),
+    },
+}
 # Custom user model
 AUTH_USER_MODEL = "users.CustomUser"
 
@@ -112,7 +122,7 @@ WSGI_APPLICATION = 'snedaEcommerceAPI.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+# https://docs.djangoproje15ct.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
     'default': {
@@ -137,8 +147,14 @@ CACHES = {
 }
 
 
-# email backend
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# ── Email / SMTP configuration (Gmail) ───────────────────────────────────────
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "willadan667@gmail.com")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")   # App Password from .env
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", f"Sneda Ecommerce <{EMAIL_HOST_USER}>")
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators

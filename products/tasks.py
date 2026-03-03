@@ -1,10 +1,17 @@
-from django_q.tasks import async_task
-from products.models import Product
-from orders.models import Order
+from celery import shared_task
+from orders.models import Reservation
+from django.utils import timezone
 
-def update_inventory(order_id):
-    order = Order.objects.get(id=order_id)
-    for item in order.items.all():  # Assuming related_name='items' on OrderItem
-        product = item.product
-        product.stock -= item.quantity
-        product.save()
+@shared_task
+def expire_reservations():
+    """Expire reservations that are older than 15 minutes"""
+    reservations = Reservation.objects.filter(
+        status=Reservation.Status.ACTIVE,
+        expires_at__lt=timezone.now()
+    )
+    count = reservations.count()  # capture before the loop mutates state
+    for reservation in reservations:
+        reservation.status = Reservation.Status.EXPIRED
+        reservation.save()
+    print(f"Expired {count} reservations")
+    return f"Expired {count} reservations"

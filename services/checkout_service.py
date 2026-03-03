@@ -235,11 +235,11 @@ class CheckoutService:
 
     @staticmethod
     def _create_order_and_reserve_stock(user, idempotency_key):
-        print("function called")
         """
         Phase 1: Atomically check idempotency, create order, and reserve stock.
             Returns: (order, amount) tuple or response dict if order already exists
-            create a reservation foor the order items instead of touching stock directly. This allows us to handle payment failures more gracefully without risking stock inconsistencies.
+            create a reservation foor the order items instead of touching stock directly. 
+            This allows to handle payment failures more gracefully without risking stock inconsistencies.
         """
         with transaction.atomic():
         # lock rows to prevent race conditions
