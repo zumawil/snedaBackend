@@ -13,6 +13,7 @@ from shipping.generate_shipping_number import generate_tracking_number
 from utils.payment_helpers import bill_user, verify_transaction_status
 from utils.apiResponse import api_response
 from rest_framework import status
+from orders.models import Order, OrderItem, Reservation
 import utils.paymentConstants
 
 logger = logging.getLogger(__name__)
@@ -234,32 +235,34 @@ class CheckoutService:
 
     @staticmethod
     def _create_order_and_reserve_stock(user, idempotency_key):
+        print("function called")
         """
         Phase 1: Atomically check idempotency, create order, and reserve stock.
-        Returns: (order, amount) tuple or response dict if order already exists
+            Returns: (order, amount) tuple or response dict if order already exists
+            create a reservation foor the order items instead of touching stock directly. This allows us to handle payment failures more gracefully without risking stock inconsistencies.
         """
         with transaction.atomic():
-            # lock rows to prevent race conditions
+        # lock rows to prevent race conditions
             attempt, created = CheckoutAttempt.objects.select_for_update().get_or_create(key=idempotency_key)
-
-            # If this is a duplicate request, return the existing order
+        
+        # If this is a duplicate request, return the existing order
             if not created and attempt.order:
                 return CheckoutService._handle_existing_order(attempt)
 
-            # Lock and fetch cart with items
+        # Lock and fetch cart with items
             cart = Cart.objects.select_for_update().select_related('user').prefetch_related(
                 'items__product'
             ).get(user=user)
-            
-            # Lock cart items to prevent modifications during checkout
+        
+        # Lock cart items to prevent modifications during checkout
             items = list(cart.items.select_for_update().all())
-            
+        
             if not items:
                 raise Exception("Cart is empty. Please add items before checkout.")
 
             # Create order
             order = Order.objects.create(user=user)
-            
+        
             # Link order to checkout attempt for idempotency
             attempt.order = order
             attempt.save()
@@ -268,25 +271,27 @@ class CheckoutService:
             for item in items:
                 # Lock the product row to prevent concurrent modifications
                 product = Product.objects.select_for_update().get(pk=item.product.pk)
-                
-                # Check stock availability
-                if product.inventory_qty < item.quantity:
-                    current_stock = product.inventory_qty
+            
+                # Check AVAILABLE stock (real stock minus active reservations)
+                available = product.available_stock()
+                if available < item.quantity:
                     raise Exception(
                         f'Insufficient stock for product {product.item_no}. '
-                        f'Available: {current_stock}, Requested: {item.quantity}'
+                        f'Available: {available}, Requested: {item.quantity}'
                     )
-                
-                # Decrement stock
-                product.inventory_qty -= item.quantity
-                product.save()
-                
                 # Create order item
                 OrderItem.objects.create(
                     order=order,
                     product=product,
                     quantity=item.quantity,
                     price=product.gross_price
+                )
+
+                # Create reservation instead of touching stock
+                Reservation.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=item.quantity,
                 )
 
             # Calculate and save total amount
@@ -297,7 +302,6 @@ class CheckoutService:
             logger.info(f"Order {order.id} created during checkout for user {user.email}")
             
             return order, amount
-
     @staticmethod
     def _handle_existing_order(attempt):
         """
@@ -401,17 +405,21 @@ class CheckoutService:
     @staticmethod
     def _cancel_order_and_restore_stock(order):
         """
-            Cancel order and restore stock if payment fails.
+        Cancel order and restore stock if payment fails.
+        Uses Shipping.status for cancellation and prevents duplicate restocks.
         """
         with transaction.atomic():
+            shipping = getattr(order, 'shipping', None)
+            if shipping and shipping.status == 'cancelled':
+                logger.info(f"Order {order.id} already cancelled, skipping restock.")
+                return
             # Restore stock for each order item
             for order_item in order.items.select_for_update().all():
                 product = Product.objects.select_for_update().get(pk=order_item.product.pk)
                 product.inventory_qty += order_item.quantity
                 product.save()
-            
-            # Mark order as cancelled
-            order.status = 'cancelled'
-            order.save()
-            
+            # Mark shipping as cancelled
+            if shipping:
+                shipping.status = 'cancelled'
+                shipping.save()
             logger.info(f"Order {order.id} cancelled and stock restored")

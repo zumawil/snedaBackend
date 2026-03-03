@@ -55,7 +55,16 @@ class Product(models.Model):
 
     def __str__(self):
         return f"{self.item_no} - {self.category.name}"
-
+    
+    # return available stock considering active reservations
+    def available_stock(self):
+        from orders.models import Reservation
+        reserved = self.reservations.filter(
+            status=Reservation.Status.ACTIVE,
+            expires_at__gt=timezone.now()
+        ).aggregate(total=models.Sum('quantity'))['total'] or 0
+        
+        return self.inventory_qty - reserved
 
     
 class ProductImage(models.Model):
@@ -66,3 +75,13 @@ class ProductImage(models.Model):
     def __str__(self):
         return f"Image for {self.product.item_no}"
     
+
+from django.db import models
+import uuid
+from django.utils import timezone
+from datetime import timedelta
+
+def default_expiry():
+    return timezone.now() + timedelta(minutes=15)
+
+# model for reservation of products in an order

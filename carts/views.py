@@ -181,10 +181,8 @@ class CheckoutView(APIView):
         address = request.data.get('address')
         pickup = str(request.data.get('pickup', '')).lower() == 'true'
 
-        
         result = CheckoutService.process_checkout(user, idempotency_key, address, pickup)
 
-       
         return api_response(
             success=result.get('success', False),
             data=result.get('data'),

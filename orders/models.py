@@ -1,6 +1,10 @@
 from django.db import models
 from products.models import Product
 from users.models import CustomUser as User
+from django.utils import timezone
+from datetime import timedelta
+import uuid
+from products.models import Product
 # Create your models here.
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
@@ -56,3 +60,31 @@ class OrderItem(models.Model):
     
     def __str__(self):
         return f"order item for {self.order}"
+
+# set default expiry to 15 minutes from now
+#
+default_expiry = timezone.now() + timedelta(minutes=15)    
+class Reservation(models.Model):
+    
+    class Status(models.TextChoices):
+        ACTIVE    = 'active',    'Active'
+        EXPIRED   = 'expired',   'Expired'
+        CONFIRMED = 'confirmed', 'Confirmed'
+        CANCELLED = 'cancelled', 'Cancelled'
+    
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order      = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='reservations')
+    product    = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reservations')
+    quantity   = models.PositiveIntegerField()
+    status     = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    expires_at = models.DateTimeField(default=default_expiry)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('order', 'product')  # one reservation per product per order
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def __str__(self):
+        return f"Reservation {self.id} - {self.product} x{self.quantity} [{self.status}]"

@@ -46,6 +46,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 INSTALLED_APPS = [
     'rest_framework',
+    'django_q',
     'drf_yasg',
     'users',
     'products',
@@ -65,6 +66,16 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
 ]
+# django-q config (using Django ORM as broker, no separate Redis/RabbitMQ needed)
+Q_CLUSTER = {
+    'name': 'myproject',
+    'workers': 2, # number of worker processes to runWWW
+    'timeout': 90, # task timeout in seconds
+    'retry': 120, # retry failed tasks after 2 minutes
+    'queue_limit': 50, # max tasks in queue before new tasks are rejected
+    'bulk': 10, # how many tasks to queue for a worker at once
+    'orm': 'default',  # uses your Django DB, no broker needed
+}
 
 # Custom user model
 AUTH_USER_MODEL = "users.CustomUser"
