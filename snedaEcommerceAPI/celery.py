@@ -6,6 +6,11 @@ Start a worker in a separate terminal with:
 
 On Windows you MUST add the --pool=solo flag (no fork support):
     celery -A snedaEcommerceAPI worker --loglevel=info --pool=solo
+
+to run celery beat run in seperate terminal on Windows
+    celery -A snedaEcommerceAPI beat --loglevel=info
+
+on linux you can run together
 """
 
 import os
