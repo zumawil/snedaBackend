@@ -359,4 +359,5 @@ LOGGING = {
 }
 
 # to watch live logs
-# run this in a separate terminal: tail -f logs/errors.log
+# run this in a separate terminal: tail -f logs/errors.log for linux
+# run Get-Content logs\errors.log -Wait -Tail 10 for windows powershell

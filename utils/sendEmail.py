@@ -35,3 +35,8 @@ def send_otp_email(to: str, subject: str, html: str) -> None:
 def send_order_confirmation_email(to: str, subject: str, html: str) -> None:
     """Send an order-confirmation email."""
     _send_html_email(to, subject, html)
+
+
+def send_admin_notification_email(to: str, subject: str, html: str) -> None:
+    """Send admin-generated notification email (approval, rejection, shipping updates)."""
+    _send_html_email(to, subject, html)
