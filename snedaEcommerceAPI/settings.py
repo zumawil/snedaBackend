@@ -76,6 +76,7 @@ CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://127.0.0
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TASK_IGNORE_RESULT = False # make sure results are stored in the bacckend
 CELERY_TIMEZONE = 'UTC'
 # Retry failed tasks up to 3 times with a 60-second delay (set per task)
 CELERY_TASK_ACKS_LATE = True          # only ack after the task completes
@@ -272,7 +273,7 @@ SWAGGER_SETTINGS = {
 # for logging
 # Create a "logs" directory inside your project root if it doesn't exist
 
-'''
+
 LOG_DIR = Path(BASE_DIR, "logs")
 LOG_DIR.mkdir(exist_ok=True)
 
@@ -359,4 +360,3 @@ LOGGING = {
 
 # to watch live logs
 # run this in a separate terminal: tail -f logs/errors.log
-'''

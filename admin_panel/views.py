@@ -20,6 +20,7 @@ from django.utils import timezone
 
 from rest_framework.pagination import PageNumberPagination
 from orders.models import Order
+from users.permissions import IsAdminUser
 
 # class StandardResultsSetPagination(PageNumberPagination):
 #     page_size = 10
@@ -94,7 +95,7 @@ class DashboardStatsView(APIView):
             )
 
 class AdminOrderListView(APIView):
-    permission_classes = []
+    permission_classes = [IsAdminUser]
     pagination_class = PageNumberPagination
 
     def get(self, request):

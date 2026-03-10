@@ -1,3 +1,4 @@
+# get otp email template
 def get_otp_email_html(otp):
     return f"""
     <!DOCTYPE html>
@@ -21,7 +22,7 @@ def get_otp_email_html(otp):
         </body>
     </html>
     """
-
+# password reset email template
 def get_password_reset_html(password_reset_url):
     return f"""
     <!DOCTYPE html>
