@@ -32,6 +32,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q
 
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi    
 
 # ============================================================================
 # DASHBOARD
@@ -39,6 +41,64 @@ from django.db.models import Q
 
 class DashboardStatsView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
+
+    @swagger_auto_schema(
+        operation_description="Get dashboard statistics",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Dashboard statistics retrieved successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "stats": openapi.Schema(
+                                    type=openapi.TYPE_OBJECT,
+                                    properties={
+                                        "total_revenue_for_today": openapi.Schema(type=openapi.TYPE_NUMBER, description="Total revenue for today"),
+                                        "total_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders today"),
+                                        "total_products": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total products in system"),
+                                        "total_pending_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total pending orders"),
+                                        "total_users": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total registered users"),
+                                        "revenue_growth": openapi.Schema(type=openapi.TYPE_NUMBER, description="Revenue growth percentage compared to last month"),
+                                        "this_month_revenue": openapi.Schema(type=openapi.TYPE_NUMBER, description="Total revenue this month"),
+                                    }
+                                ),
+                                "recent_orders": openapi.Schema(
+                                    type=openapi.TYPE_ARRAY, 
+                                    items=openapi.Schema(type=openapi.TYPE_OBJECT),
+                                    description="List of 5 most recent orders"
+                                )
+                            }
+                        ),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING, description="Error message if any")
+                    }
+                )
+            ),
+            401: openapi.Response(
+                description="Unauthorized - Invalid or missing authentication",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "detail": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            403: openapi.Response(
+                description="Forbidden - User is not an admin",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "detail": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            )
+        }
+    )
 
     def get(self, request):
         try:
@@ -109,6 +169,23 @@ class AdminOrderListView(APIView):
     permission_classes = [IsVerifiedUser,IsAdminUser]
     pagination_class = PageNumberPagination
 
+    @swagger_auto_schema(
+        operation_description="Get a paginated list of all orders",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('status', openapi.IN_QUERY, description="Filter by shipping status (pending, shipped, delivered, cancelled)", type=openapi.TYPE_STRING),
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Orders retrieved successfully",
+                schema=OrderDetailSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only")
+        }
+    )
     def get(self, request):
         try:
             # Support filtering by status
@@ -144,6 +221,19 @@ class AdminOrderListView(APIView):
 class AdminOrderDetailView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Get details of a specific order by ID",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Order retrieved successfully",
+                schema=OrderSerializer()
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     def get(self, request, pk):
         try:
             order = get_object_or_404(Order, pk=pk)
@@ -166,6 +256,21 @@ class AdminOrderDetailView(APIView):
 class AdminUpdateOrderStatusView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Update the shipping status of an order",
+        security=['Bearer', 'Cookie'],
+        request_body=OrderStatusUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Order status updated successfully",
+                schema=OrderSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Invalid status or no shipping record"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     @transaction.atomic
     def patch(self, request, pk):
         # Lock row to avoid race conditions
@@ -208,9 +313,30 @@ class AdminUpdateOrderStatusView(APIView):
         )     
 
 class AdminOrderApproveView(APIView):
-    """Approve an order for further processing"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
     
+    @swagger_auto_schema(
+        operation_description="Approve an order for further processing",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Order approved successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT, properties={}),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - Order already approved"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     @transaction.atomic
     def post(self, request, pk):
         order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
@@ -241,6 +367,34 @@ class AdminOrderApproveView(APIView):
 class AdminOrderRejectView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Reject an order",
+        security=['Bearer', 'Cookie'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'reason': openapi.Schema(type=openapi.TYPE_STRING, description="Reason for rejection (optional)")
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="Order rejected successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT, properties={}),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - Order already rejected"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     @transaction.atomic
     def post(self, request, pk):
         # Lock order row to prevent concurrent updates
@@ -274,6 +428,28 @@ class AdminOrderRejectView(APIView):
 class AdminOrderCancelView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Cancel an order and restore stock",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Order cancelled successfully and stock restored",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT, properties={}),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - Order already cancelled"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     @transaction.atomic
     def post(self, request, pk):
         # Lock order row to avoid race conditions
@@ -322,6 +498,22 @@ class AdminProductListView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
     pagination_class = PageNumberPagination
 
+    @swagger_auto_schema(
+        operation_description="Get a paginated list of all products",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Products retrieved successfully",
+                schema=ProductSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only")
+        }
+    )
     def get(self, request):
         try:
             products = Product.objects.all().order_by('-item_no')
@@ -350,6 +542,21 @@ class AdminProductCreateView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @swagger_auto_schema(
+        operation_description="Create a new product",
+        security=['Bearer', 'Cookie'],
+        request_body=ProductCreateUpdateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Product created successfully",
+                schema=ProductSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Validation failed"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Product group not found")
+        }
+    )
     def post(self, request):
         try:
             data = request.data.copy()
@@ -426,6 +633,19 @@ class AdminProductDetailView(APIView):
     permission_classes = [IsVerifiedUser,IsAdminUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @swagger_auto_schema(
+        operation_description="Get details of a specific product",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Product retrieved successfully",
+                schema=ProductSerializer()
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Product not found")
+        }
+    )
     def get(self, request, pk):
         try:
             product = get_object_or_404(Product, pk=pk)
@@ -444,6 +664,21 @@ class AdminProductDetailView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Update a product",
+        security=['Bearer', 'Cookie'],
+        request_body=ProductCreateUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="Product updated successfully",
+                schema=ProductSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Validation failed"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Product or Product group not found")
+        }
+    )
     def put(self, request, pk):
         try:
             product = get_object_or_404(Product, pk=pk)
@@ -501,6 +736,16 @@ class AdminProductDetailView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Delete a product",
+        security=['Bearer', 'Cookie'],
+        responses={
+            204: openapi.Response(description="Product deleted successfully"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Product not found")
+        }
+    )
     def delete(self, request, pk):
         try:
             product = get_object_or_404(Product, pk=pk)
@@ -563,6 +808,40 @@ class AdminProductStockUpdateView(APIView):
     """Quick stock adjustment endpoint"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Adjust product stock quantity (positive to add, negative to subtract)",
+        security=['Bearer', 'Cookie'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['stock'],
+            properties={
+                'stock': openapi.Schema(type=openapi.TYPE_INTEGER, description="Stock adjustment amount (e.g., +10 to add 10, -5 to reduce by 5)")
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="Stock updated successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "inventory_qty": openapi.Schema(type=openapi.TYPE_INTEGER)
+                            }
+                        ),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - Missing field, invalid value, or insufficient stock"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Product not found")
+        }
+    )
     def patch(self, request, pk):
         try:
             product = get_object_or_404(Product.objects.select_for_update(), pk=pk)
@@ -623,6 +902,20 @@ class AdminProductImageView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
     parser_classes = [MultiPartParser, FormParser]
 
+    @swagger_auto_schema(
+        operation_description="Upload a product image",
+        security=['Bearer', 'Cookie'],
+        request_body=ProductImageSerializer,
+        responses={
+            201: openapi.Response(
+                description="Product image created successfully",
+                schema=ProductImageSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Validation failed"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only")
+        }
+    )
     def post(self, request):
         try:
             serializer = ProductImageSerializer(data=request.data)
@@ -649,6 +942,20 @@ class AdminProductImageView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @swagger_auto_schema(
+        operation_description="Delete a product image by ID",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('id', openapi.IN_QUERY, description="Image ID to delete", type=openapi.TYPE_INTEGER, required=True)
+        ],
+        responses={
+            204: openapi.Response(description="Product image deleted successfully"),
+            400: openapi.Response(description="Bad request - Missing or invalid image ID"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Image not found")
+        }
+    )
     def delete(self, request):
         try:
             image_id = request.query_params.get('id')
@@ -699,6 +1006,22 @@ class AdminShippingListView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
     pagination_class = PageNumberPagination
 
+    @swagger_auto_schema(
+        operation_description="Get a paginated list of all shipping records",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Shipping records retrieved successfully",
+                schema=ShippingSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only")
+        }
+    )
     def get(self, request):
         try:
             shippings = Shipping.objects.all()
@@ -726,6 +1049,19 @@ class AdminShippingDetailView(APIView):
     """Get specific shipping record by ID (Admin only)"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Get details of a specific shipping record",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Shipping record retrieved successfully",
+                schema=ShippingSerializer()
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Shipping record not found")
+        }
+    )
     def get(self, request, pk):
         try:
             shipping = get_object_or_404(Shipping, pk=pk)
@@ -749,6 +1085,21 @@ class AdminUpdateShippingStatusView(APIView):
     """Update shipping status (Admin only)"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Update shipping status by order ID",
+        security=['Bearer', 'Cookie'],
+        request_body=ShippingSerializer,
+        responses={
+            200: openapi.Response(
+                description="Shipping status updated successfully",
+                schema=ShippingSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Validation failed"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="Shipping record not found")
+        }
+    )
     def put(self, request, order_id):
         try:
             shipping = get_object_or_404(Shipping, order__id=order_id)
@@ -785,6 +1136,22 @@ class AdminUserListView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
     pagination_class = PageNumberPagination
 
+    @swagger_auto_schema(
+        operation_description="Get a paginated list of all users",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Users retrieved successfully",
+                schema=UserSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only")
+        }
+    )
     def get(self, request):
         try:
             users = CustomUser.objects.all().order_by('-date_joined')
@@ -811,6 +1178,35 @@ class AdminUserDetailView(APIView):
     """Get user details with order history (Admin only)"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Get details of a specific user including their order history",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="User details retrieved successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "user": openapi.Schema(type=openapi.TYPE_OBJECT),
+                                "orders": openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_OBJECT)),
+                                "total_orders": openapi.Schema(type=openapi.TYPE_INTEGER),
+                                "total_spent": openapi.Schema(type=openapi.TYPE_NUMBER)
+                            }
+                        ),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def get(self, request, pk):
         try:
             user = get_object_or_404(CustomUser, pk=pk)
@@ -853,6 +1249,23 @@ class AdminSearchUsersView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
     pagination_class = PageNumberPagination
 
+    @swagger_auto_schema(
+        operation_description="Search users by name or email",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('q', openapi.IN_QUERY, description="Search query (searches in first_name, last_name, email)", type=openapi.TYPE_STRING),
+            openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Users retrieved successfully",
+                schema=UserSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only")
+        }
+    )
     def get(self, request):
         try:
             search_query = request.query_params.get('q', '')
@@ -887,6 +1300,40 @@ class AdminAssignUserRoleView(APIView):
     """Assign roles/permissions to users (Admin only)"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Assign staff or superuser roles to a user",
+        security=['Bearer', 'Cookie'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="Grant staff access"),
+                'is_superuser': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="Grant superuser access")
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="User role updated successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "is_staff": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                                "is_superuser": openapi.Schema(type=openapi.TYPE_BOOLEAN)
+                            }
+                        ),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            403: openapi.Response(description="Forbidden - Only superusers can assign roles / Cannot remove superuser status from superuser"),
+            401: openapi.Response(description="Unauthorized"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request, pk):
         try:
             user = get_object_or_404(CustomUser, pk=pk)
@@ -940,6 +1387,32 @@ class AdminAssignUserRoleView(APIView):
 class ToggleUserStatusView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Toggle user active status (activate/deactivate)",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="User status updated successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "is_active": openapi.Schema(type=openapi.TYPE_BOOLEAN)
+                            }
+                        ),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            403: openapi.Response(description="Forbidden - Cannot toggle own account or superuser status"),
+            401: openapi.Response(description="Unauthorized"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request, pk):
         try:
             user = get_object_or_404(CustomUser, pk=pk)
@@ -985,6 +1458,28 @@ class AdminCreateNotificationView(APIView):
     """Create notification for a user (Admin only)"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
+    @swagger_auto_schema(
+        operation_description="Create a notification for a specific user",
+        security=['Bearer', 'Cookie'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['user_id', 'message'],
+            properties={
+                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="ID of the user to send notification to"),
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description="Notification message")
+            }
+        ),
+        responses={
+            201: openapi.Response(
+                description="Notification created successfully",
+                schema=NotificationSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Missing required fields"),
+            401: openapi.Response(description="Unauthorized"),
+            403: openapi.Response(description="Forbidden - Admin only"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request):
         try:
             user_id = request.data.get('user_id')
