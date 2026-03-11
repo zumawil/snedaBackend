@@ -160,38 +160,33 @@ class AdminUpdateOrderStatusView(APIView):
     """Update order status (Admin only) - Processing → Shipped → Delivered"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
     
+    @transaction.atomic
     def patch(self, request, pk):
-        try:
-            order = get_object_or_404(Order, pk=pk)
+        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
             
-            serializer = OrderStatusUpdateSerializer(data=request.data)
-            if not serializer.is_valid():
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Validation failed",
-                    message=serializer.errors,
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
+        serializer = OrderStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        new_status = serializer.validated_data['status']
             
-            new_status = serializer.validated_data['status']
-            
-            if hasattr(order, 'shipping') and order.shipping:
-                order.shipping.status = new_status
-                order.shipping.save()
+        if hasattr(order, 'shipping') and order.shipping:
+            order.shipping.status = new_status
+            order.shipping.save()
                 
                 # Get tracking number if provided
-                tracking_number = request.data.get('tracking_number')
+            tracking_number = request.data.get('tracking_number')
                 
-                # Send email notification asynchronously
-                from admin_panel.tasks import send_shipping_status_email_task
-                send_shipping_status_email_task.delay(order.id, new_status, tracking_number)
-            else:
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="No shipping record",
-                    message="No shipping related to this order was found",
+            # Send email notification asynchronously
+            from admin_panel.tasks import send_shipping_status_email_task
+            transaction.on_commit(
+                lambda: send_shipping_status_email_task.delay(order.id, new_status, tracking_number)
+            )
+        else:
+            return api_response(
+                success=False,
+                data=None,
+                error="No shipping record",
+                message="No shipping related to this order was found",
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -202,14 +197,7 @@ class AdminUpdateOrderStatusView(APIView):
                 message=f"Order status updated to {new_status}",
                 status_code=status.HTTP_200_OK
             )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error updating order status",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+        
 
 
 class AdminOrderApproveView(APIView):
