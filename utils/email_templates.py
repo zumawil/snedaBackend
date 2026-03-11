@@ -181,3 +181,26 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
     </body>
     </html>
     """
+
+def get_order_cancelled_html(order_id, user_first_name):
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; margin: 0; padding: 0;">
+        <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
+            <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 40px 20px; text-align: center;">
+                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Order Cancelled</h1>
+                <p style="color: #fee2e2; margin-top: 8px; font-size: 16px;">Order #{order_id}</p>
+            </div>
+            <div style="padding: 40px;">
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {user_first_name or 'Valued Customer'},</p>
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">We regret to inform you that your order has been <b style="color: #ef4444;">cancelled</b>.</p>
+                <p style="color: #6b7280; font-size: 14px; line-height: 1.5;">If you have any questions, please contact our support team. We apologize for any inconvenience.</p>
+            </div>
+            <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
+                <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """

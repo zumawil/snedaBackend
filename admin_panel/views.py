@@ -6,6 +6,11 @@ from django.utils import timezone
 from datetime import timedelta
 from django.db.models import F
 from django.db import transaction
+from admin_panel.tasks import (
+    send_shipping_status_email_task,
+    send_order_approved_email_task,
+    send_order_disapproved_email_task
+)
 
 from users.models import CustomUser
 from products.models import Product, ProductImage, Category, Brand, HSCode, ProductGroup
@@ -40,7 +45,7 @@ class DashboardStatsView(APIView):
             today = timezone.now().date()
             total_revenue = Payment.objects.filter(status='success', date_created=today).aggregate(Sum('amount'))['amount__sum'] or 0
             total_orders = Order.objects.filter(created_at=today).count()
-            total_pending_orders = Order.objects.filter(shipping__status='pending').count()
+            total_pending_orders = Order.objects.filter(Q(shipping__status='pending') | Q(shipping__isnull=True)).count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
 
@@ -111,7 +116,10 @@ class AdminOrderListView(APIView):
             orders = Order.objects.all().order_by('-created_at')
             
             if order_status:
-                orders = orders.filter(shipping__status=order_status)
+                if order_status == 'pending':
+                    orders = orders.filter(Q(shipping__status='pending') | Q(shipping__isnull=True))
+                else:
+                    orders = orders.filter(shipping__status=order_status)
             
             paginator = self.pagination_class()
             result_page = paginator.paginate_queryset(orders, request)
@@ -155,184 +163,156 @@ class AdminOrderDetailView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
 class AdminUpdateOrderStatusView(APIView):
-    """Update order status (Admin only) - Processing → Shipped → Delivered"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
-    
+
     @transaction.atomic
     def patch(self, request, pk):
-        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
-            
+        # Lock row to avoid race conditions
+        order = Order.objects.select_for_update().get(pk=pk)
+
         serializer = OrderStatusUpdateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        new_status = serializer.validated_data['status']
-            
-        if hasattr(order, 'shipping') and order.shipping:
-            order.shipping.status = new_status
-            order.shipping.save()
-                
-                # Get tracking number if provided
-            tracking_number = request.data.get('tracking_number')
-                
-            # Send email notification asynchronously
-            from admin_panel.tasks import send_shipping_status_email_task
-            transaction.on_commit(
-                lambda: send_shipping_status_email_task.delay(order.id, new_status, tracking_number)
-            )
-        else:
+        serializer.is_valid(raise_exception=True) # automatically checks and raises error
+        new_status = serializer.validated_data["status"]
+
+        if not hasattr(order, "shipping") or not order.shipping:
             return api_response(
                 success=False,
-                data=None,
                 error="No shipping record",
                 message="No shipping related to this order was found",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            serializer = OrderSerializer(order)
-            return api_response(
-                success=True,
-                data=serializer.data,
-                message=f"Order status updated to {new_status}",
-                status_code=status.HTTP_200_OK
+                status_code=status.HTTP_400_BAD_REQUEST
             )
-        
 
+        shipping = order.shipping
+        shipping.status = new_status
+
+        tracking_number = request.data.get("tracking_number")
+        if tracking_number:
+            shipping.tracking_number = tracking_number
+
+        shipping.save()
+
+        # Safe closure to avoid late-binding issues
+        transaction.on_commit(
+            lambda oid=order.id, status=new_status, tn=tracking_number:
+                send_shipping_status_email_task.delay(oid, status, tn)
+        )
+
+        serializer = OrderSerializer(order)
+
+        return api_response(
+            success=True,
+            data=serializer.data,
+            message=f"Order status updated to {new_status}",
+            status_code=status.HTTP_200_OK
+        )     
 
 class AdminOrderApproveView(APIView):
     """Approve an order for further processing"""
     permission_classes = [IsVerifiedUser, IsAdminUser]
     
-    def post(self, request, pk):
-        try:
-            order = get_object_or_404(Order, pk=pk)
-            
-            # Check if already approved
-            if order.approved is True:
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Already approved",
-                    message="Order is already approved",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            order.approved = True
-            order.save()
-            
-            # Send email notification asynchronously
-            from admin_panel.tasks import send_order_approved_email_task
-            send_order_approved_email_task.delay(order.id)
-            
-            return api_response(
-                success=True,
-                data=None,
-                message="Order approved successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error approving order",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-
-class AdminOrderRejectView(APIView):
-    """Reject an order"""
-    permission_classes = [IsVerifiedUser, IsAdminUser]
-    
-    def post(self, request, pk):
-        try:
-            order = get_object_or_404(Order, pk=pk)
-            
-            # Check if already rejected (approved=False means explicitly rejected)
-            if order.approved is False:
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Already rejected",
-                    message="Order is already rejected",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Get rejection reason from request if provided
-            reason = request.data.get('reason')
-            
-            order.approved = False
-            order.save()
-            
-            # Send email notification asynchronously
-            from admin_panel.tasks import send_order_disapproved_email_task
-            send_order_disapproved_email_task.delay(order.id, reason)
-            
-            return api_response(
-                success=True,
-                data=None,
-                message="Order rejected successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error rejecting order",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-
-class AdminOrderCancelView(APIView):
-    """Cancel an order with stock restoration (Admin only)"""
-    permission_classes = [IsVerifiedUser, IsAdminUser]
-    
     @transaction.atomic
     def post(self, request, pk):
-        try:
-            # Use select_for_update to prevent race conditions
-            order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
-            current_status = order.effective_status if hasattr(order, 'effective_status') else order.shipping.status
-            
-            if current_status == "cancelled":
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Already cancelled",
-                    message="Order already cancelled",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Restore stock for each order item
-            for item in order.items.all():
-                Product.objects.filter(id=item.product.id).update(inventory_qty=F('inventory_qty') + item.quantity)
-            
-            # Cancel shipping if present
-            if hasattr(order, 'shipping') and order.shipping:
-                order.shipping.status = 'cancelled'
-                order.shipping.save()
-            
-            # Mark order as not approved and save
-            order.approved = False
-            order.save()
-            
-            return api_response(
-                success=True,
-                data=None,
-                message="Order cancelled successfully and stock restored",
-                status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
+        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
+        # Check if already approved
+        if order.approved:
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
-                message="Error cancelling order",
+                error="Already approved",
+                message="Order is already approved",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+            
+        order.approved = True
+        # Save first, then schedule email task after transaction commits
+        order.save()
+        transaction.on_commit(
+            lambda oid=order.id: send_order_approved_email_task.delay(oid)
+        )
+            
+        return api_response(
+            success=True,
+            data=None,
+            message="Order approved successfully",
+            status_code=status.HTTP_200_OK
+        )
+       
+class AdminOrderRejectView(APIView):
+    permission_classes = [IsVerifiedUser, IsAdminUser]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        # Lock order row to prevent concurrent updates
+        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
+
+        if order.approved is False:
+            return api_response(
+                success=False,
+                error="Already rejected",
+                message="Order is already rejected",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        reason = request.data.get("reason", "")  
+
+        order.approved = False
+        order.save()
+
+        # Safe closure to avoid late-binding
+        transaction.on_commit(
+            lambda oid=order.id, r=reason:
+                send_order_disapproved_email_task.delay(oid, r)
+        )
+
+        return api_response(
+            success=True,
+            message="Order rejected successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+class AdminOrderCancelView(APIView):
+    permission_classes = [IsVerifiedUser, IsAdminUser]
+
+    @transaction.atomic
+    def post(self, request, pk):
+        # Lock order row to avoid race conditions
+        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
+
+        if order.effective_status == "cancelled":
+            return api_response(
+                success=False,
+                error="Already cancelled",
+                message="Order already cancelled",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Restore stock for each order item
+        for item in order.items.all():
+            Product.objects.filter(id=item.product.id).update(
+                inventory_qty=F('inventory_qty') + item.quantity
+            )
+
+        # Cancel shipping if present
+        if hasattr(order, "shipping") and order.shipping:
+            order.shipping.status = "cancelled"
+            order.shipping.save()
+
+        # Mark order as not approved
+        order.approved = False
+        order.save()
+        
+        from admin_panel.tasks import send_order_cancelled_email_task
+        # Optionally: notify user after commit
+        transaction.on_commit(
+            lambda oid=order.id: send_order_cancelled_email_task.delay(oid)
+        )
+
+        return api_response(
+            success=True,
+            message="Order cancelled successfully and stock restored",
+            status_code=status.HTTP_200_OK
+        )
 
 # ============================================================================
 # PRODUCT MANAGEMENT
