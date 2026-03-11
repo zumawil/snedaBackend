@@ -597,7 +597,7 @@ class AdminProductStockUpdateView(APIView):
 
     def patch(self, request, pk):
         try:
-            product = get_object_or_404(Product, pk=pk)
+            product = get_object_or_404(Product.objects.select_for_update(), pk=pk)
             stock_adjustment = request.data.get('stock')
             
             if stock_adjustment is None:
@@ -630,10 +630,8 @@ class AdminProductStockUpdateView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Use F() for atomic update - database will handle constraint validation
-            product.inventory_qty = F('inventory_qty') + stock_adjustment
-            product.save()
-            
+            product.inventory_qty += stock_adjustment
+            product.save(update_fields=['inventory_qty'])
             # Refresh to get actual value
             product.refresh_from_db()
             
