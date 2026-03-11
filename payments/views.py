@@ -183,7 +183,7 @@ class WebhookView(APIView):
     webhook for paystack payment gateway
     """
     def post(self, request):
-        print('DEGUB webhook called')
+       
         # 1. Verify signature from paystack
         signature = request.headers.get('x-paystack-signature', None)
         if not signature:

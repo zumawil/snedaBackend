@@ -17,28 +17,22 @@ def send_confirmation_email_task(self, order_id, payment_id):
     Background Celery task: build and send the order confirmation email.
     Retries up to 3 times (60-second delay) on any failure.
     """
-    print(f"[TASK] send_confirmation_email_task called | order_id={order_id} payment_id={payment_id}")
     logger.info(f"[TASK] send_confirmation_email_task started | order_id={order_id} payment_id={payment_id}")
 
     try:
-        print("[TASK] Step 1: Importing modules...")
         from utils.email_templates import get_order_confirmation_html
         from utils.sendEmail import send_order_confirmation_email
         from orders.models import Order
         from payments.models import Payment
 
-        print(f"[TASK] Step 2: Fetching Order id={order_id}...")
         order = Order.objects.get(id=order_id)
-        print(f"[TASK] Step 3: Fetching Payment id={payment_id}...")
         payment = Payment.objects.get(id=payment_id)
 
-        print(f"[TASK] Step 4: Building order items summary...")
         order_items_summary = "\n".join([
             f"- {item.product.item_no} x {item.quantity}: GHS {item.get_total_price()}"
             for item in order.items.all()
         ])
 
-        print(f"[TASK] Step 5: Generating email HTML...")
         email_html = get_order_confirmation_html(
             order_id=order.id,
             user_first_name=order.user.first_name,
@@ -47,20 +41,15 @@ def send_confirmation_email_task(self, order_id, payment_id):
             total_amount=order.total_amount
         )
 
-        print(f"[TASK] Step 6: Sending email to {order.user.email}...")
         send_order_confirmation_email(
             order.user.email,
             f"Order Confirmation - #{order.id} - Sneda Ecommerce",
             email_html
         )
-
-        print(f"[TASK] SUCCESS: Email sent for order {order.id}")
         logger.info(f"Order confirmation email sent for order {order.id}")
 
     except Exception as exc:
         # Log the FULL traceback so you can see exactly which line failed
-        print(f"[TASK] ERROR: {exc}")
-        print(traceback.format_exc())
         logger.error(
             f"Failed to send confirmation email for order {order_id}: {exc}",
             exc_info=True   # <-- this includes the full stack trace in the log
