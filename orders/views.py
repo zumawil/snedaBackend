@@ -35,15 +35,25 @@ class OrderView(APIView):
 
     permission_classes = [IsVerifiedUser]
 
+    @swagger_auto_schema(
+        operation_description="Get all orders for the authenticated user or a specific order by ID",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Order ID (optional)", type=openapi.TYPE_INTEGER)
+        ],
+        responses={
+            200: openapi.Response(
+                description="Orders retrieved successfully",
+                schema=OrderSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     def get(self, request, pk=None):
         try:
-            is_admin = request.user and (request.user.is_staff or request.user.is_superuser)
             if pk:
-                # Admins can view any order; others only their own
-                if is_admin:
-                    order = get_object_or_404(Order, pk=pk)
-                else:
-                    order = get_object_or_404(Order, pk=pk, user=request.user)
+                order = get_object_or_404(Order, pk=pk, user=request.user)
                 serializer = OrderSerializer(order)
                 return api_response(
                     success=True,
@@ -52,11 +62,7 @@ class OrderView(APIView):
                     status_code=status.HTTP_200_OK
                 )
             else:
-                # Admins see all orders; others only their own
-                if is_admin:
-                    orders = Order.objects.all().order_by('-created_at')
-                else:
-                    orders = Order.objects.filter(user=request.user).order_by('-created_at')
+                orders = Order.objects.filter(user=request.user).order_by('-created_at')
                 serializer = OrderSerializer(orders, many=True)
                 return api_response(
                     success=True,
@@ -74,12 +80,35 @@ class OrderView(APIView):
             )
 
 class OrderItemView(APIView):
+    """
+    Handle order items for authenticated users.
     
+    Allows users to:
+    - GET: List all order items or retrieve a specific order item by ID
+    - POST: Create a new order item for an existing order
+    - PUT: Update an existing order item
+    - DELETE: Remove an order item from an order
+    
+    All operations require the order to belong to the authenticated user.
+    """
 
     permission_classes = [IsVerifiedUser]
-    '''
-    get user order by pk
-    '''
+
+    @swagger_auto_schema(
+        operation_description="Get all order items for the authenticated user or a specific order item by ID",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Order Item ID (optional)", type=openapi.TYPE_INTEGER)
+        ],
+        responses={
+            200: openapi.Response(
+                description="Order items retrieved successfully",
+                schema=OrderItemSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            404: openapi.Response(description="Order item not found")
+        }
+    )
     def get(self, request, pk=None):
         try:
             if pk:
@@ -110,9 +139,21 @@ class OrderItemView(APIView):
                 message="Error retrieving order items",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-    '''
-    create order item 
-    '''
+
+    @swagger_auto_schema(
+        operation_description="Create a new order item for an existing order",
+        security=['Bearer', 'Cookie'],
+        request_body=OrderItemCreateSerializer,
+        responses={
+            201: openapi.Response(
+                description="Order item created successfully",
+                schema=OrderItemSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Invalid data"),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            403: openapi.Response(description="Forbidden - Cannot create item for another user's order")
+        }
+    )
     def post(self, request):
         serializer = OrderItemCreateSerializer(data=request.data)
         if serializer.is_valid():
@@ -141,9 +182,23 @@ class OrderItemView(APIView):
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
-    '''
-        update order item
-    '''
+    @swagger_auto_schema(
+        operation_description="Update an existing order item's quantity",
+        security=['Bearer', 'Cookie'],
+        request_body=OrderItemUpdateSerializer,
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Order Item ID", type=openapi.TYPE_INTEGER, required=True)
+        ],
+        responses={
+            200: openapi.Response(
+                description="Order item updated successfully",
+                schema=OrderItemSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Invalid data"),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            404: openapi.Response(description="Order item not found")
+        }
+    )
     def put(self, request, pk):
         try:
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
@@ -171,9 +226,19 @@ class OrderItemView(APIView):
                 message="Error updating order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-    '''
-        delete order item
-    '''
+
+    @swagger_auto_schema(
+        operation_description="Delete an order item from an order",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Order Item ID", type=openapi.TYPE_INTEGER, required=True)
+        ],
+        responses={
+            204: openapi.Response(description="Order item deleted successfully"),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            404: openapi.Response(description="Order item not found")
+        }
+    )
     def delete(self, request, pk):
         try:
             order_item = get_object_or_404(OrderItem, pk=pk, order__user=request.user)
@@ -192,124 +257,35 @@ class OrderItemView(APIView):
                 message="Error deleting order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-class OrderUpdateStatusView(APIView):
-    """
-    Update order status (Admin only).
-
-    PATCH /orders/<pk>/status/: Update the status of a specific order.
-    Requires admin permissions. Valid statuses: pending, shipped, delivered.
-    """
-    permission_classes = [IsAuthenticated, IsAdminUser]
-    
-    def patch(self, request, pk):
-        try:
-            # Admin can update any order, so we don't filter by user
-            order = get_object_or_404(Order, pk=pk)
-            
-            # Use serializer for validation
-            serializer = OrderStatusUpdateSerializer(data=request.data)
-            if not serializer.is_valid():
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Validation failed",
-                    message=serializer.errors,
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            new_status = serializer.validated_data['status']
-            
-            # Update shipping.status (Shipping is the source of truth for order state)
-            if hasattr(order, 'shipping') and order.shipping:
-                logger.info(f"Updating shipping status for order {order.id} to {new_status}")
-                order.shipping.status = new_status
-                order.shipping.save()
-                logger.info(f"Shipping status updated for order {order.id}")
-            else:
-                logger.warning(f"No shipping record found for order {order.id}")
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="No shipping record",
-                    message="No shipping related to this order was found",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            serializer = OrderSerializer(order)
-            return api_response(
-                success=True,
-                data=serializer.data,
-                message=f"Order status updated to {new_status}",
-                status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error updating order status",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-class OrderApproveView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-    """
-    approve order for further processing
-    """
-    def post(self, request, pk):
-        try:
-            order = get_object_or_404(Order, pk=pk)
-            order.approved = True
-            order.save()
-            return api_response(
-                success=True,
-                data=None,
-                message="Order approved successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error approving order",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-class OrderRejectView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
-    """
-    reject order for further processing
-    """
-    def post(self, request, pk):
-        try:
-            order = get_object_or_404(Order, pk=pk)
-            order.approved = False
-            order.save()
-            return api_response(
-                success=True,
-                data=None,
-                message="Order disapproved successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error disapproving order",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
 
 class OrderCancelView(APIView):
     """
     Cancel a pending order.
-
-    POST /order/cancel/<pk>/: Cancel the specified order if its status is 'pending'.
+    
+    POST /orders/cancel/<pk>/: Cancel the specified order if its status is 'pending'.
     Only the order owner can cancel their order.
+    Cancelling a pending order will:
+    - Restore stock for each order item
+    - Cancel any linked shipping record
     """
     permission_classes = [IsVerifiedUser]
-    
+
+    @swagger_auto_schema(
+        operation_description="Cancel a pending order (owner only)",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Order ID", type=openapi.TYPE_INTEGER, required=True)
+        ],
+        responses={
+            200: openapi.Response(
+                description="Order cancelled successfully",
+                schema=OrderSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Order cannot be cancelled in current state or already cancelled"),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            404: openapi.Response(description="Order not found")
+        }
+    )
     def post(self, request, pk):
         try:
             order = get_object_or_404(Order, pk=pk, user=request.user)
@@ -359,13 +335,27 @@ class OrderCancelView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-
 class OrderDetailView(APIView):
     """
-    Handle user orders.
-
-    GET /orders/<pk>/: Retrieve details of a specific order.
+    Handle detailed order information for authenticated users.
+    
+    GET /orders/detail/: Retrieve detailed information about the authenticated user's orders.
+    Returns order details including user information, payment status, and fulfillment status.
     """
+    permission_classes = [IsVerifiedUser]
+
+    @swagger_auto_schema(
+        operation_description="Get detailed order information for the authenticated user",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Order details retrieved successfully",
+                schema=OrderDetailSerializer(many=True)
+            ),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            400: openapi.Response(description="Bad request - Error retrieving order details")
+        }
+    )
     def get(self, request):
         try:
             orders = Order.objects.filter(user=request.user).order_by('-created_at')
