@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     # Dashboard
     DashboardStatsView,
+    SalesChartDataView,
     
     # Order Management
     AdminOrderListView,
@@ -38,6 +39,7 @@ from .views import (
 urlpatterns = [
     # Dashboard
     path('stats/', DashboardStatsView.as_view(), name='admin-dashboard-stats'),
+    path('sales-chart/', SalesChartDataView.as_view(), name='admin-sales-chart'),
     
     # Order Management
     path('orders/', AdminOrderListView.as_view(), name='admin-orders-list'),

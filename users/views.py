@@ -352,6 +352,56 @@ class LogoutUserView(APIView):
             )
 
 
+class RequestOTPView(APIView):
+    """
+    View to manually request a new OTP.
+    Throttled to 5 requests per minute.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_scope = 'sensitive'
+
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing email",
+                message="Email field is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        User = get_user_model()
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return api_response(
+                success=False,
+                data=None,
+                error="User not found",
+                message="User with this email does not exist",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        if user.verified:
+            return api_response(
+                success=True,
+                data=None,
+                message="User is already verified",
+                status_code=status.HTTP_200_OK
+            )
+
+        otp = send_otp_to_user(user)
+
+        return api_response(
+            success=True,
+            data={'otp': otp},
+            message="OTP sent successfully",
+            status_code=status.HTTP_200_OK
+        )
+
+
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.core.cache import cache
@@ -521,7 +571,6 @@ class GetUserSession(APIView):
 
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
-
 
 class SearchUsers(APIView):
 
