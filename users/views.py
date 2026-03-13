@@ -386,10 +386,10 @@ class RequestOTPView(APIView):
 
         if user.verified:
             return api_response(
-                success=True,
+                success=False,
                 data=None,
                 message="User is already verified",
-                status_code=status.HTTP_200_OK
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         otp = send_otp_to_user(user)
@@ -432,8 +432,9 @@ class TokenGenerator:
         return cached_token == token
 
 class ChangePasswordRequestView(APIView):
+    print("callinf")
     permission_classes = [permissions.AllowAny]
-    throttle_scope = 'sensitive'
+    throttle_scope = 'sensitive' # 5 requests per minute
 
     def post(self, request):
         email  = request.data.get('email')
@@ -457,12 +458,12 @@ class ChangePasswordRequestView(APIView):
         token.store_password_token(user.pk) # 15 min
 
         app_url = os.environ.get("APP_URL", "http://localhost:3000")
-        password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={url_token}"
+        password_reset_url = f"{app_url.rstrip('/')}/password-reset/?uid={uid}&token={url_token}"
         from utils.email_templates import get_password_reset_html
         reset_html = get_password_reset_html(password_reset_url)
 
         send_otp_email(
-            [user.email],
+            user.email,
             "You requested for a password change",
             reset_html,
         )
