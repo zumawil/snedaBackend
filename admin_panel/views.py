@@ -499,7 +499,7 @@ class AdminProductListView(APIView):
     pagination_class = PageNumberPagination
 
     @swagger_auto_schema(
-        operation_description="Get a paginated list of all products",
+        operation_description="Get a paginated list of all products supports category filtering",
         security=['Bearer', 'Cookie'],
         manual_parameters=[
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
@@ -517,6 +517,12 @@ class AdminProductListView(APIView):
     def get(self, request):
         try:
             products = Product.objects.all().order_by('-item_no')
+            
+            # Support category filtering
+            category_name = request.query_params.get('category', None)
+            if category_name:
+                products = products.filter(category__name__icontains=category_name)
+                
             paginator = self.pagination_class()
             result_page = paginator.paginate_queryset(products, request)
             serializer = ProductSerializer(result_page, many=True)
