@@ -31,6 +31,10 @@ def send_otp_email(to: str, subject: str, html: str) -> None:
     """Send a one-time-password email."""
     _send_html_email(to, subject, html)
 
+def send_password_reset_email(to: str, subject: str, html: str) -> None:
+    """Send a password reset email."""
+    _send_html_email(to, subject, html)
+
 
 def send_order_confirmation_email(to: str, subject: str, html: str) -> None:
     """Send an order-confirmation email."""

@@ -34,10 +34,16 @@ from django.db.models import Q
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi    
+from django.db.models.functions import TruncDate
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # DASHBOARD
 # ============================================================================
+
 
 class DashboardStatsView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
@@ -103,8 +109,8 @@ class DashboardStatsView(APIView):
     def get(self, request):
         try:
             today = timezone.now().date()
-            total_revenue = Payment.objects.filter(status='success', date_created=today).aggregate(Sum('amount'))['amount__sum'] or 0
-            total_orders = Order.objects.filter(created_at=today).count()
+            total_revenue = Payment.objects.filter(status='success', date_created__date=today).aggregate(Sum('amount'))['amount__sum'] or 0
+            total_orders = Order.objects.filter(created_at__date=today).count()
             total_pending_orders = Order.objects.filter(Q(shipping__status='pending') | Q(shipping__isnull=True)).count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
@@ -132,6 +138,15 @@ class DashboardStatsView(APIView):
             recent_orders = Order.objects.order_by('-created_at')[:5]
             recent_orders_serializer = OrderDetailSerializer(recent_orders, many=True)
 
+            # Alerts/Warnings data
+            total_low_stock = Product.objects.filter(inventory_qty__lt=10).count()
+            
+            last_24h = timezone.now() - timedelta(days=1)
+            total_failed_payments = Payment.objects.filter(
+                status='failed',
+                date_created__gte=last_24h
+            ).count()
+
             data = {
                 "stats": {
                     "total_revenue_for_today": float(total_revenue),
@@ -140,7 +155,9 @@ class DashboardStatsView(APIView):
                     'total_pending_orders': total_pending_orders,
                     "total_users": total_users,
                     "revenue_growth": round(revenue_growth, 2),
-                    "this_month_revenue": float(this_month_revenue)
+                    "this_month_revenue": float(this_month_revenue),
+                    "total_low_stock": total_low_stock,
+                    "total_failed_payments": total_failed_payments
                 },
                 "recent_orders": recent_orders_serializer.data
             }
@@ -158,6 +175,78 @@ class DashboardStatsView(APIView):
                 error=str(e),
                 message="Error retrieving dashboard statistics",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class SalesChartDataView(APIView):
+    """Return daily revenue and order count for the last 30 days."""
+    permission_classes = [IsVerifiedUser, IsAdminUser]
+
+    def get(self, request):
+        try:
+            
+
+            today = timezone.now().date()
+            start_date = today - timedelta(days=29)  # 30 days including today
+
+            # Daily revenue from successful payments
+            #Gets all successful payments since start_date, groups them by day,
+            # sums the payment amounts for each day, and returns the daily revenue 
+            # ordered by date
+            revenue_qs = (
+                Payment.objects
+                .filter(status='success', date_created__date__gte=start_date)
+                .annotate(day=TruncDate('date_created'))
+                .values('day')
+                .annotate(revenue=Sum('amount'))
+                .order_by('day')
+            )
+            # returns a dictionary of days and their corresponding revenue
+            revenue_map = {entry['day']: float(entry['revenue']) for entry in revenue_qs}
+
+            # Daily order count
+            orders_qs = (
+                Order.objects
+                .filter(created_at__date__gte=start_date)
+                .annotate(day=TruncDate('created_at'))
+                .values('day')
+                .annotate(count=Count('id'))
+                .order_by('day')
+            )
+            # returns a dictionary of days and their corresponding order count
+            orders_map = {entry['day']: entry['count'] for entry in orders_qs}
+
+            # Build a continuous 30-day array (fill gaps with zeros)
+            # chat data stores he revenue and order count for each day
+            # eg
+            # {
+            # "date": "2026-03-03",
+            # "revenue": 180.0,
+            # "orders": 8
+            # }
+            chart_data = []
+            for i in range(30):
+                day = start_date + timedelta(days=i)
+                chart_data.append({
+                    'date': day.strftime('%Y-%m-%d'),
+                    'revenue': revenue_map.get(day, 0),
+                    'orders': orders_map.get(day, 0),
+                })
+
+            return api_response(
+                success=True,
+                data=chart_data,
+                message="Sales chart data retrieved successfully",
+                status_code=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.exception("Error retrieving sales chart data: ")
+            return api_response(
+                success=False,
+                data=None,
+                error="internal server error",
+                message="Error retrieving sales chart data",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
