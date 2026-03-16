@@ -45,11 +45,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-def enqueue_task(task):
-    task_id = task.delay()
-    return task_id
-
-
 class DashboardStatsView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
 
@@ -393,7 +388,8 @@ class AdminUpdateOrderStatusView(APIView):
 
         # Safe closure to avoid late-binding issues
         transaction.on_commit(
-            enqueue_task(send_shipping_status_email_task.delay(oid, status, tn))
+            lambda oid=order.id, status=new_status, tn=tracking_number:
+                send_shipping_status_email_task.delay(oid, status, tn)
         )
 
         serializer = OrderSerializer(order)
