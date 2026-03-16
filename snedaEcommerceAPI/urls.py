@@ -48,6 +48,7 @@ urlpatterns = [
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     path('notifications/', include('notifications.urls')),
     path('admin-panel/', include('admin_panel.urls')),
+    path('tasks/', include('background_tasks.urls')),
 ]
 
 if settings.DEBUG:

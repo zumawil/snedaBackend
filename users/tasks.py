@@ -14,159 +14,170 @@ def send_otp_email_task(self, job_id, user_id):
     job = None
     User = get_user_model()
 
+    # Fetch job
     try:
-        # Fetch job
-        try:
-            job = BackgroundJob.objects.get(id=job_id)
-        except BackgroundJob.DoesNotExist:
-            logger.error(f"Job with id {job_id} not found for OTP email task")
-            return
+        job = BackgroundJob.objects.get(id=job_id)
+    except BackgroundJob.DoesNotExist:
+        logger.error(f"Job with id {job_id} not found for OTP email task")
+        return
 
-        # Mark job as processing
-        job.mark_processing()
-        logger.info(f"Started processing job {job_id}")
+    # Mark job as processing
+    job.mark_processing()
+    logger.info(f"Started processing job {job_id}")
 
-        # Fetch user
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            logger.error(f"User with id {user_id} not found for OTP email task")
-            job.mark_failed(f"User with id {user_id} not found")
-            return
+    # Fetch user
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        logger.error(f"User with id {user_id} not found for OTP email task")
+        job.mark_failed(f"User with id {user_id} not found")
+        return
 
-        # Generate OTP secret if missing
-        if not user.otp_secret:
-            user.otp_secret = pyotp.random_base32()
-            user.save(update_fields=["otp_secret"])
+    # Generate OTP secret if missing
+    if not user.otp_secret:
+        user.otp_secret = pyotp.random_base32()
+        user.save(update_fields=["otp_secret"])
 
-        # Generate OTP (valid for 5 minutes)
-        totp = pyotp.TOTP(user.otp_secret, interval=300)
-        otp = totp.now()
+    # Generate OTP (valid for 5 minutes)
+    totp = pyotp.TOTP(user.otp_secret, interval=300)
+    otp = totp.now()
 
-        # Generate email HTML
-        otp_html = get_otp_email_html(otp)
+    # Generate email HTML
+    otp_html = get_otp_email_html(otp)
 
-        # Send email
+    # 1. Send email (retryable block)
+    try:
         send_otp_email(
             user.email,
             "Your verification code from Sneda Ecommerce",
             otp_html,
         )
-
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Successfully completed job {job_id}")
-
-        return f"OTP email sent to {user.email}"
-
     except Exception as e:
-        logger.exception("Error sending OTP email task")
-
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
+        
         # If retries exhausted → mark failed
-        if job and self.request.retries >= self.max_retries:
+        if job:
             job.mark_failed(f"Error sending OTP email task: {str(e)}")
-        else:
-            raise self.retry(exc=e)  
+        return f"Failed to send OTP email to {user.email} after retries"
+
+    # 2. Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Successfully completed job {job_id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
+
+    return f"OTP email sent to {user.email}"
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_manual_otp_email_task(self, job_id, user_id):
     job = None
     User = get_user_model()
 
+    # Fetch job
     try:
-        # Fetch job
-        try:
-            job = BackgroundJob.objects.get(id=job_id)
-        except BackgroundJob.DoesNotExist:
-            logger.error(f"Job with id {job_id} not found for manual OTP email task")
-            return
+        job = BackgroundJob.objects.get(id=job_id)
+    except BackgroundJob.DoesNotExist:
+        logger.error(f"Job with id {job_id} not found for manual OTP email task")
+        return
 
-        # Mark job as processing
-        job.mark_processing()
-        logger.info(f"Started processing job {job_id}")
+    # Mark job as processing
+    job.mark_processing()
+    logger.info(f"Started processing job {job_id}")
 
-        # Fetch user
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            logger.error(f"User with id {user_id} not found for manual OTP email task")
-            job.mark_failed(f"User with id {user_id} not found")
-            return
-        
-        if not user.otp_secret:
-            user.otp_secret = pyotp.random_base32()
-            user.save(update_fields=["otp_secret"])
+    # Fetch user
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        logger.error(f"User with id {user_id} not found for manual OTP email task")
+        job.mark_failed(f"User with id {user_id} not found")
+        return
+    
+    if not user.otp_secret:
+        user.otp_secret = pyotp.random_base32()
+        user.save(update_fields=["otp_secret"])
 
-        totp = pyotp.TOTP(user.otp_secret, interval=300)
-        otp = totp.now()
-        
-        otp_html = get_manual_otp_email_html(otp)
-        
+    totp = pyotp.TOTP(user.otp_secret, interval=300)
+    otp = totp.now()
+    
+    otp_html = get_manual_otp_email_html(otp)
+    
+    # 1. Send email (retryable block)
+    try:
         send_otp_email(
             user.email,
             "Your New Verification Code - Sneda Ecommerce",
             otp_html,
         )
-
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Successfully completed job {job_id}")
-
-        return f"Manual OTP email sent to {user.email}"
-
     except Exception as e:
-        logger.exception("Error sending manual OTP email task")
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
         
         # If retries exhausted → mark failed
-        if job and self.request.retries >= self.max_retries:
+        if job:
             job.mark_failed(f"Error sending manual OTP email task: {str(e)}")
-        else:
-            raise self.retry(exc=e)
+        return f"Failed to send manual OTP email to {user.email} after retries"
+
+    # 2. Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Successfully completed job {job_id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
+
+    return f"Manual OTP email sent to {user.email}"
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_password_reset_email_task(self, job_id, user_id, password_reset_url):
     job = None
     User = get_user_model()
 
+    # Fetch job
     try:
-        # Fetch job
-        try:
-            job = BackgroundJob.objects.get(id=job_id)
-        except BackgroundJob.DoesNotExist:
-            logger.error(f"Job with id {job_id} not found for password reset email task")
-            return
+        job = BackgroundJob.objects.get(id=job_id)
+    except BackgroundJob.DoesNotExist:
+        logger.error(f"Job with id {job_id} not found for password reset email task")
+        return
 
-        # Mark job as processing
-        job.mark_processing()
-        logger.info(f"Started processing job {job_id}")
+    # Mark job as processing
+    job.mark_processing()
+    logger.info(f"Started processing job {job_id}")
 
-        # Fetch user
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            logger.error(f"User with id {user_id} not found for password reset email task")
-            job.mark_failed(f"User with id {user_id} not found")
-            return
-        
-        reset_html = get_password_reset_html(password_reset_url)
-        
+    # Fetch user
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        logger.error(f"User with id {user_id} not found for password reset email task")
+        job.mark_failed(f"User with id {user_id} not found")
+        return
+    
+    reset_html = get_password_reset_html(password_reset_url)
+    
+    # 1. Send email (retryable block)
+    try:
         send_password_reset_email(
             user.email,
             "Password Reset Request",
             reset_html,
         )
-
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Successfully completed job {job_id}")
-
-        return f"Password reset email sent to {user.email}"
-
     except Exception as e:
-        logger.exception("Error sending password reset email task")
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e)
         
         # If retries exhausted → mark failed
-        if job and self.request.retries >= self.max_retries:
+        if job:
             job.mark_failed(f"Error sending password reset email task: {str(e)}")
-        else:
-            raise self.retry(exc=e)
+        return f"Failed to send password reset email to {user.email} after retries"
+
+    # 2. Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Successfully completed job {job_id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
+
+    return f"Password reset email sent to {user.email}"

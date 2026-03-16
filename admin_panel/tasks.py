@@ -9,10 +9,20 @@ Sends emails to users when:
 
 import logging
 import traceback
+import socket
+import smtplib
 from celery import shared_task
+from background_tasks.models import BackgroundJob
+from utils.email_templates import (
+    get_order_approved_html,
+    get_order_disapproved_html,
+    get_shipping_status_update_html,
+    get_order_cancelled_html
+)
+from utils.sendEmail import send_admin_notification_email
+from orders.models import Order
 
 logger = logging.getLogger(__name__)
-from background_tasks.models import BackgroundJob
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_order_approved_email_task(self, job_id, order_id):
@@ -39,9 +49,6 @@ def send_order_approved_email_task(self, job_id, order_id):
         # Mark job as processing
         job.mark_processing()
 
-        from utils.email_templates import get_order_approved_html
-        from orders.models import Order
-        
         order = Order.objects.get(id=order_id)
         
         # Build order items summary
@@ -79,40 +86,31 @@ def send_order_approved_email_task(self, job_id, order_id):
     
     # Step 2: Send email (retry only on transient errors)
     try:
-        from utils.sendEmail import send_admin_notification_email
-        
         send_admin_notification_email(
             order.user.email,
             f"Order Approved - #{order.id} - Sneda Ecommerce",
             email_html
         )
-        
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Order approval email sent for order {order.id}")
-        
     except (smtplib.SMTPException, socket.error, ConnectionError, TimeoutError) as exc:
         # Transient errors - retry
-        logger.error(
-            f"Transient error sending order approval email for order {order_id}: {exc}",
-            exc_info=True
-        )
-        
-        # If retries exhausted → mark failed
+        logger.error(f"Transient error sending order approval email for order {order_id}: {exc}", exc_info=True)
         if job and self.request.retries >= self.max_retries:
             job.mark_failed(f"Transient SMTP error after retries: {str(exc)}")
-        
         raise self.retry(exc=exc)
-    
     except Exception as exc:
         # Permanent failures (invalid email, etc.) - do not retry
-        logger.error(
-            f"Permanent error sending order approval email for order {order_id}: {exc}",
-            exc_info=True
-        )
+        logger.error(f"Permanent error sending order approval email for order {order_id}: {exc}", exc_info=True)
         if job:
             job.mark_failed(f"Permanent sending error: {str(exc)}")
         return
+
+    # Step 3: Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Order approval email sent for order {order.id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_order_disapproved_email_task(self, job_id, order_id, reason=None):
@@ -123,56 +121,54 @@ def send_order_disapproved_email_task(self, job_id, order_id, reason=None):
     job = None
     logger.info(f"[TASK] send_order_disapproved_email_task started | job_id={job_id} order_id={order_id}")
 
+    # Fetch job
     try:
-        # Fetch job
-        try:
-            job = BackgroundJob.objects.get(id=job_id)
-        except BackgroundJob.DoesNotExist:
-            logger.error(f"Job with id {job_id} not found for order disapproved email task")
-            return
+        job = BackgroundJob.objects.get(id=job_id)
+    except BackgroundJob.DoesNotExist:
+        logger.error(f"Job with id {job_id} not found for order disapproved email task")
+        return
 
-        # Mark job as processing
-        job.mark_processing()
+    # Mark job as processing
+    job.mark_processing()
 
-        from utils.email_templates import get_order_disapproved_html
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        logger.error(f"Order {order_id} does not exist. Email not sent.")
+        job.mark_failed(f"Order {order_id} does not exist")
+        return  # stop task, no retry
+
+    # Generate email HTML
+    email_html = get_order_disapproved_html(
+        order_id=order.id,
+        user_first_name=order.user.first_name,
+        reason=reason
+    )
+
+    # Send email (retryable block)
+    try:
         from utils.sendEmail import send_admin_notification_email
-        from orders.models import Order
-
-        try:
-            order = Order.objects.get(id=order_id)
-        except Order.DoesNotExist:
-            logger.error(f"Order {order_id} does not exist. Email not sent.")
-            job.mark_failed(f"Order {order_id} does not exist")
-            return  # stop task, no retry
-
-        # Generate email HTML
-        email_html = get_order_disapproved_html(
-            order_id=order.id,
-            user_first_name=order.user.first_name,
-            reason=reason
-        )
-
-        # Send email
         send_admin_notification_email(
             order.user.email,
             f"Order Update - #{order.id} - Sneda Ecommerce",
             email_html
         )
-
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Order rejection email sent for order {order.id}")
-
     except Exception as exc:
-        logger.error(
-            f"Failed to send order rejection email for order {order_id}: {exc}",
-            exc_info=True
-        )
-        # If retries exhausted → mark failed
-        if job and self.request.retries >= self.max_retries:
-            job.mark_failed(f"Error sending disapproval email: {str(exc)}")
-        else:
+        if self.request.retries < self.max_retries:
             raise self.retry(exc=exc)
+        
+        # If retries exhausted → mark failed
+        if job:
+            job.mark_failed(f"Error sending disapproval email: {str(exc)}")
+        return f"Failed to send disapproval email for order {order.id}"
+
+    # Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Order rejection email sent for order {order.id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_shipping_status_email_task(self, job_id, order_id, new_status, tracking_number=None):
@@ -183,57 +179,55 @@ def send_shipping_status_email_task(self, job_id, order_id, new_status, tracking
     job = None
     logger.info(f"[TASK] send_shipping_status_email_task started | job_id={job_id} order_id={order_id} status={new_status}")
 
+    # Fetch job
     try:
-        # Fetch job
-        try:
-            job = BackgroundJob.objects.get(id=job_id)
-        except BackgroundJob.DoesNotExist:
-            logger.error(f"Job with id {job_id} not found for shipping status email task")
-            return
+        job = BackgroundJob.objects.get(id=job_id)
+    except BackgroundJob.DoesNotExist:
+        logger.error(f"Job with id {job_id} not found for shipping status email task")
+        return
 
-        # Mark job as processing
-        job.mark_processing()
+    # Mark job as processing
+    job.mark_processing()
 
-        from utils.email_templates import get_shipping_status_update_html
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        logger.error(f"Order {order_id} does not exist. Email not sent.")
+        job.mark_failed(f"Order {order_id} does not exist")
+        return  # stop task, no retry
+
+    # Generate email HTML
+    email_html = get_shipping_status_update_html(
+        order_id=order.id,
+        user_first_name=order.user.first_name,
+        new_status=new_status,
+        tracking_number=tracking_number
+    )
+
+    # Send email (retryable block)
+    try:
         from utils.sendEmail import send_admin_notification_email
-        from orders.models import Order
-
-        try:
-            order = Order.objects.get(id=order_id)
-        except Order.DoesNotExist:
-            logger.error(f"Order {order_id} does not exist. Email not sent.")
-            job.mark_failed(f"Order {order_id} does not exist")
-            return  # stop task, no retry
-
-        # Generate email HTML
-        email_html = get_shipping_status_update_html(
-            order_id=order.id,
-            user_first_name=order.user.first_name,
-            new_status=new_status,
-            tracking_number=tracking_number
-        )
-
-        # Send email
         send_admin_notification_email(
             order.user.email,
             f"Shipping Update - Order #{order.id} - Sneda Ecommerce",
             email_html
         )
-
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Shipping status email sent for order {order.id}")
-
     except Exception as exc:
-        logger.error(
-            f"Failed to send shipping status email for order {order_id}: {exc}",
-            exc_info=True
-        )
-        # If retries exhausted → mark failed
-        if job and self.request.retries >= self.max_retries:
-            job.mark_failed(f"Error sending shipping update email: {str(exc)}")
-        else:
+        if self.request.retries < self.max_retries:
             raise self.retry(exc=exc)
+        
+        # If retries exhausted → mark failed
+        if job:
+            job.mark_failed(f"Error sending shipping update email: {str(exc)}")
+        return f"Failed to send shipping update for order {order.id}"
+
+    # Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Shipping status email sent for order {order.id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_order_cancelled_email_task(self, job_id, order_id):
@@ -244,52 +238,51 @@ def send_order_cancelled_email_task(self, job_id, order_id):
     job = None
     logger.info(f"[TASK] send_order_cancelled_email_task started | job_id={job_id} order_id={order_id}")
 
+    # Fetch job
     try:
-        # Fetch job
-        try:
-            job = BackgroundJob.objects.get(id=job_id)
-        except BackgroundJob.DoesNotExist:
-            logger.error(f"Job with id {job_id} not found for order cancelled email task")
-            return
+        job = BackgroundJob.objects.get(id=job_id)
+    except BackgroundJob.DoesNotExist:
+        logger.error(f"Job with id {job_id} not found for order cancelled email task")
+        return
 
-        # Mark job as processing
-        job.mark_processing()
+    # Mark job as processing
+    job.mark_processing()
 
-        from utils.email_templates import get_order_cancelled_html
-        from utils.sendEmail import send_admin_notification_email
-        from orders.models import Order
-
-        try:
-            order = Order.objects.get(id=order_id)
-        except Order.DoesNotExist:
-            logger.error(f"Order {order_id} does not exist. Email not sent.")
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        logger.error(f"Order {order_id} does not exist. Email not sent.")
+        if job:
             job.mark_failed(f"Order {order_id} does not exist")
-            return  # stop task, no retry
+        return  # stop task, no retry
 
-        # Generate email HTML
-        email_html = get_order_cancelled_html(
-            order_id=order.id,
-            user_first_name=order.user.first_name
-        )
+    # Generate email HTML
+    email_html = get_order_cancelled_html(
+        order_id=order.id,
+        user_first_name=order.user.first_name
+    )
 
-        # Send email
+    # Send email (retryable block)
+    try:
+        from utils.sendEmail import send_admin_notification_email
         send_admin_notification_email(
             order.user.email,
             f"Order Cancelled - #{order.id} - Sneda Ecommerce",
             email_html
         )
-
-        # Mark job completed
-        job.mark_completed()
-        logger.info(f"Order cancellation email sent for order {order.id}")
-
     except Exception as exc:
-        logger.error(
-            f"Failed to send order cancellation email for order {order_id}: {exc}",
-            exc_info=True
-        )
-        # If retries exhausted → mark failed
-        if job and self.request.retries >= self.max_retries:
-            job.mark_failed(f"Error sending cancellation email: {str(exc)}")
-        else:
+        if self.request.retries < self.max_retries:
             raise self.retry(exc=exc)
+        
+        # If retries exhausted → mark failed
+        if job:
+            job.mark_failed(f"Error sending cancellation email: {str(exc)}")
+        return f"Failed to send cancellation email for order {order.id}"
+
+    # Mark job completed (non-retryable for email)
+    try:
+        if job:
+            job.mark_completed()
+            logger.info(f"Order cancellation email sent for order {order.id}")
+    except Exception as e:
+        logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")

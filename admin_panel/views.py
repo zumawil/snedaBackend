@@ -36,6 +36,7 @@ from django.db.models import Q
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi    
 from django.db.models.functions import TruncDate
+from admin_panel.tasks import send_order_cancelled_email_task
 
 import logging
 
@@ -472,7 +473,7 @@ class AdminOrderApproveView(APIView):
             
         return api_response(
             success=True,
-            data=None,
+            data={"job_id": job.id},
             message="Order approved successfully",
             status_code=status.HTTP_200_OK
         )

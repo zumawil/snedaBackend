@@ -73,10 +73,21 @@ def handle_payment_success(reference, order_id):
 
             # 2. Queue the Celery task safely
             def dispatch_task():
-                result = send_confirmation_email_task.delay(job.id, order.id, payment.id)
-                # Capture the Celery task_id immediately
-                job.task_id = result.id
-                job.save(update_fields=['task_id'])
+                try:
+                    result = send_confirmation_email_task.delay(job.id, order.id, payment.id)
+                except Exception as exc:
+                    logger.exception("Failed to enqueue confirmation email for order %s", order.id)
+                    job.mark_failed(f"Dispatch error: {exc!s}")
+                    return
+
+                try:
+                    BackgroundJob.objects.filter(pk=job.pk).update(task_id=result.id)
+                except Exception:
+                    logger.exception(
+                        "Queued confirmation email for order %s but failed to persist task_id for job %s",
+                        order.id,
+                        job.id,
+                    )
 
             transaction.on_commit(dispatch_task)
 

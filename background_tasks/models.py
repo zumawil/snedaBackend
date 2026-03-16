@@ -21,7 +21,7 @@ class BackgroundJob(models.Model):
     
     # Generic relation to related objects (simplified)
     related_object_type = models.CharField(max_length=100)
-    related_object_id = models.IntegerField()
+    related_object_id = models.BigIntegerField()
     
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
@@ -36,14 +36,17 @@ class BackgroundJob(models.Model):
     def mark_processing(self, task_id=None):
         self.status = self.Status.PROCESSING
         self.started_at = timezone.now()
+        self.finished_at = None
+        self.error = None
         if task_id:
             self.task_id = task_id
-        self.save(update_fields=['status', 'started_at', 'task_id'])
+        self.save(update_fields=['status', 'started_at', 'task_id', 'finished_at', 'error'])
 
     def mark_completed(self):
         self.status = self.Status.COMPLETED
         self.finished_at = timezone.now()
-        self.save(update_fields=['status', 'finished_at'])
+        self.error = None
+        self.save(update_fields=['status', 'finished_at', 'error'])
 
     def mark_failed(self, error_message):
         self.status = self.Status.FAILED
