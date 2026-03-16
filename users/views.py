@@ -120,7 +120,7 @@ class SignupUser(APIView):
             user = serializer.save()
 
             transaction.on_commit(
-               send_otp_email_task.delay(user.id) 
+                lambda: send_otp_email_task.delay(user.id)
             )
 
             return api_response(
