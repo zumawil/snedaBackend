@@ -26,6 +26,8 @@ import os
 from utils.apiResponse import api_response
 from .tasks import send_otp_email_task
 from django.db import transaction
+from background_tasks.models import BackgroundJob
+
 load_dotenv()
 
 def verify_user_otp(user, otp_input):
@@ -119,8 +121,21 @@ class SignupUser(APIView):
         if serializer.is_valid():
             user = serializer.save()
 
+            job = BackgroundJob.objects.create(
+                task_type="send_otp_email",
+                related_object_type="user",
+                related_object_id=user.id
+            )
+
+            def dispatch_task():
+                result = send_otp_email_task.delay(job.id, user.id)
+                # Capture the Celery task_id immediately
+                job.task_id = result.id
+                # only updates the task_id field
+                job.save(update_fields=['task_id'])
+
             transaction.on_commit(
-                lambda: send_otp_email_task.delay(user.id)
+                dispatch_task
             )
 
             return api_response(
@@ -362,8 +377,22 @@ class RequestOTPView(APIView):
         try:
             user = User.objects.get(email=email)
             if not user.verified:
-                from .tasks import send_manual_otp_email_task
-                send_manual_otp_email_task.delay(user.id)
+                # 1. Create the tracking record in 'pending' state
+                job = BackgroundJob.objects.create(
+                    task_type="send_manual_otp_email",
+                    related_object_type="user",
+                    related_object_id=user.id
+                )
+
+                # 2. Queue the Celery task safely
+                def dispatch_task():
+                    from .tasks import send_manual_otp_email_task
+                    result = send_manual_otp_email_task.delay(job.id, user.id)
+                    # Capture the Celery task_id immediately
+                    job.task_id = result.id
+                    job.save(update_fields=['task_id'])
+
+                transaction.on_commit(dispatch_task)
         except User.DoesNotExist:
             pass
         # don't return user not exist to prevent brute force attacks
@@ -432,9 +461,23 @@ class ChangePasswordRequestView(APIView):
 
         app_url = os.environ.get("APP_URL", "http://localhost:3000")
         password_reset_url = f"{app_url.rstrip('/')}/password-reset/?uid={uid}&token={url_token}"
-        from utils.email_templates import get_password_reset_html
-        from .tasks import send_password_reset_email_task
-        send_password_reset_email_task.delay(user.id, password_reset_url)
+        
+        # 1. Create the tracking record in 'pending' state
+        job = BackgroundJob.objects.create(
+            task_type="send_password_reset_email",
+            related_object_type="user",
+            related_object_id=user.id
+        )
+
+        # 2. Queue the Celery task safely
+        def dispatch_task():
+            from .tasks import send_password_reset_email_task
+            result = send_password_reset_email_task.delay(job.id, user.id, password_reset_url)
+            # Capture the Celery task_id immediately
+            job.task_id = result.id
+            job.save(update_fields=['task_id'])
+
+        transaction.on_commit(dispatch_task)
 
         return api_response(
             success=True,

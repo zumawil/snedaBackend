@@ -20,6 +20,7 @@ from shipping.models import Shipping
 from notifications.models import Notification
 from users.permissions import IsAdminUser, IsVerifiedUser
 from utils.apiResponse import api_response
+from background_tasks.models import BackgroundJob
 
 from orders.serializers import OrderDetailSerializer, OrderSerializer, OrderStatusUpdateSerializer
 from products.serializers import ProductSerializer, ProductCreateUpdateSerializer, ProductImageSerializer
@@ -386,11 +387,21 @@ class AdminUpdateOrderStatusView(APIView):
 
         shipping.save()
 
-        # Safe closure to avoid late-binding issues
-        transaction.on_commit(
-            lambda oid=order.id, status=new_status, tn=tracking_number:
-                send_shipping_status_email_task.delay(oid, status, tn)
+        # 1. Create the tracking record in 'pending' state
+        job = BackgroundJob.objects.create(
+            task_type="send_shipping_status_email",
+            related_object_type="order",
+            related_object_id=order.id
         )
+
+        # 2. Queue the Celery task safely
+        def dispatch_task():
+            result = send_shipping_status_email_task.delay(job.id, order.id, new_status, tracking_number)
+            # Capture the Celery task_id immediately
+            job.task_id = result.id
+            job.save(update_fields=['task_id'])
+
+        transaction.on_commit(dispatch_task)
 
         serializer = OrderSerializer(order)
 
@@ -442,9 +453,22 @@ class AdminOrderApproveView(APIView):
         order.approved = True
         # Save first, then schedule email task after transaction commits
         order.save()
-        transaction.on_commit(
-            lambda oid=order.id: send_order_approved_email_task.delay(oid)
+
+        # 1. Create the tracking record in 'pending' state
+        job = BackgroundJob.objects.create(
+            task_type="send_order_approved_email",
+            related_object_type="order",
+            related_object_id=order.id
         )
+
+        # 2. Queue the Celery task safely
+        def dispatch_task():
+            result = send_order_approved_email_task.delay(job.id, order.id)
+            # Capture the Celery task_id immediately
+            job.task_id = result.id
+            job.save(update_fields=['task_id'])
+
+        transaction.on_commit(dispatch_task)
             
         return api_response(
             success=True,
@@ -502,11 +526,21 @@ class AdminOrderRejectView(APIView):
         order.approved = False
         order.save()
 
-        # Safe closure to avoid late-binding
-        transaction.on_commit(
-            lambda oid=order.id, r=reason:
-                send_order_disapproved_email_task.delay(oid, r)
+        # 1. Create the tracking record in 'pending' state
+        job = BackgroundJob.objects.create(
+            task_type="send_order_disapproved_email",
+            related_object_type="order",
+            related_object_id=order.id
         )
+
+        # 2. Queue the Celery task safely
+        def dispatch_task():
+            result = send_order_disapproved_email_task.delay(job.id, order.id, reason)
+            # Capture the Celery task_id immediately
+            job.task_id = result.id
+            job.save(update_fields=['task_id'])
+
+        transaction.on_commit(dispatch_task)
 
         return api_response(
             success=True,
@@ -567,11 +601,21 @@ class AdminOrderCancelView(APIView):
         order.approved = False
         order.save()
         
-        from admin_panel.tasks import send_order_cancelled_email_task
-        # Optionally: notify user after commit
-        transaction.on_commit(
-            lambda oid=order.id: send_order_cancelled_email_task.delay(oid)
+        # 1. Create the tracking record in 'pending' state
+        job = BackgroundJob.objects.create(
+            task_type="send_order_cancelled_email",
+            related_object_type="order",
+            related_object_id=order.id
         )
+
+        # 2. Queue the Celery task safely
+        def dispatch_task():
+            result = send_order_cancelled_email_task.delay(job.id, order.id)
+            # Capture the Celery task_id immediately
+            job.task_id = result.id
+            job.save(update_fields=['task_id'])
+
+        transaction.on_commit(dispatch_task)
 
         return api_response(
             success=True,
