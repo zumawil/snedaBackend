@@ -93,7 +93,6 @@ def send_order_approved_email_task(self, order_id):
         # Do not retry - these are permanent failures
         return
 
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_order_disapproved_email_task(self, order_id, reason=None):
     """
@@ -135,7 +134,6 @@ def send_order_disapproved_email_task(self, order_id, reason=None):
             exc_info=True
         )
         raise self.retry(exc=exc)
-
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_shipping_status_email_task(self, order_id, new_status, tracking_number=None):
@@ -179,7 +177,6 @@ def send_shipping_status_email_task(self, order_id, new_status, tracking_number=
             exc_info=True
         )
         raise self.retry(exc=exc)
-
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_order_cancelled_email_task(self, order_id):
