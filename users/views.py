@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 import os
 from utils.apiResponse import api_response
 from .tasks import send_otp_email_task
-
+from django.db import transaction
 load_dotenv()
 
 def verify_user_otp(user, otp_input):
@@ -100,6 +100,7 @@ class VerifyOTPView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+
 class SignupUser(APIView):
 
     """
@@ -112,12 +113,15 @@ class SignupUser(APIView):
     authentication_classes = []
     throttle_scope = 'sensitive'
 
+    @transaction.atomic
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
 
-            send_otp_email_task.delay(user.id)
+            transaction.on_commit(
+               send_otp_email_task.delay(user.id) 
+            )
 
             return api_response(
                 success=True,

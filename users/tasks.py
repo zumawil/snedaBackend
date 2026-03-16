@@ -13,11 +13,11 @@ def send_otp_email_task(self, user_id):
         User = get_user_model()
         user = User.objects.get(id=user_id)
         
-        secret = pyotp.random_base32()
-        user.otp_secret = secret
-        user.save()
+        if not user.otp_secret:
+            user.otp_secret = pyotp.random_base32()
+            user.save()
 
-        totp = pyotp.TOTP(secret, interval=300)
+        totp = pyotp.TOTP(user.otp_secret, interval=300)
         otp = totp.now()
         
         otp_html = get_otp_email_html(otp)
@@ -40,11 +40,11 @@ def send_manual_otp_email_task(self, user_id):
         User = get_user_model()
         user = User.objects.get(id=user_id)
         
-        secret = pyotp.random_base32()
-        user.otp_secret = secret
-        user.save()
+        if not user.otp_secret:
+            user.otp_secret = pyotp.random_base32()
+            user.save()
 
-        totp = pyotp.TOTP(secret, interval=300)
+        totp = pyotp.TOTP(user.otp_secret, interval=300)
         otp = totp.now()
         
         otp_html = get_manual_otp_email_html(otp)

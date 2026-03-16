@@ -240,7 +240,7 @@ class SalesChartDataView(APIView):
                 status_code=status.HTTP_200_OK,
             )
         except Exception as e:
-            logger.exception("Error retrieving sales chart data: ", e)
+            logger.exception("Error retrieving sales chart data: ")
             return api_response(
                 success=False,
                 data=None,
