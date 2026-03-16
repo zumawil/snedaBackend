@@ -2,7 +2,7 @@ from django.urls import path
 
 from .views import ( SignupUser, CookieJWTLoginView, 
                     CookieTokenRefreshView,
-                    VerifyOTPView, UserProfileView, LogoutUserView,
+                    VerifyOTPView, RequestOTPView, UserProfileView, LogoutUserView,
                     ChangePasswordRequestView, ResetPasswordConfirmView, ResetPasswordView,
                      GetUsersView, GetUserSession, SearchUsers)
 
@@ -10,7 +10,8 @@ urlpatterns = [
     path("signup/", SignupUser.as_view(), name="signup"),
     path("login/", CookieJWTLoginView.as_view(), name="login"),
     path("refresh/", CookieTokenRefreshView.as_view(), name="token_refresh"),
-    path("verify-otp/", VerifyOTPView.as_view(), name="verify_otp"),  # Placeholder for OTP verification view
+    path("verify-otp/", VerifyOTPView.as_view(), name="verify_otp"),
+    path("request-otp/", RequestOTPView.as_view(), name="request_otp"),
     path("users/", GetUsersView.as_view(), name="get_users"),
 
     #porfile endpoints

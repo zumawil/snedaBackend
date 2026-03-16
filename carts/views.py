@@ -15,6 +15,9 @@ from utils.apiResponse import api_response
 from services.checkout_service import CheckoutService
 from products.models import Product
 
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,18 @@ class CartView(APIView):
 
     permission_classes = [IsVerifiedUser]
 
+    @swagger_auto_schema(
+        operation_description="Get the current user's cart",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Cart retrieved successfully",
+                schema=CartSerializer()
+            ),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            500: openapi.Response(description="Internal server error")
+        }
+    )
     def get(self, request):
         try:
             cart, created = Cart.objects.get_or_create(user=request.user)
@@ -47,6 +62,22 @@ class CartItemListCreateView(generics.ListCreateAPIView):
 
     permission_classes = [IsVerifiedUser]
 
+    @swagger_auto_schema(
+        operation_description="Get all cart items or create a new cart item",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Cart items retrieved successfully",
+                schema=CartItemSerializer(many=True)
+            ),
+            201: openapi.Response(
+                description="Cart item created successfully",
+                schema=CartItemSerializer()
+            ),
+            400: openapi.Response(description="Bad request - Validation failed"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def get_queryset(self):
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         return cart.items.all()
@@ -91,7 +122,21 @@ class CartItemListCreateView(generics.ListCreateAPIView):
 class CartItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsVerifiedUser]
     serializer_class = CartItemSerializer
-    
+
+    @swagger_auto_schema(
+        operation_description="Get, update, or delete a specific cart item",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Cart item retrieved successfully",
+                schema=CartItemSerializer()
+            ),
+            204: openapi.Response(description="Cart item deleted successfully"),
+            400: openapi.Response(description="Bad request - Validation failed"),
+            401: openapi.Response(description="Unauthorized - Authentication required"),
+            404: openapi.Response(description="Cart item not found")
+        }
+    )
     def get_queryset(self):
         cart, _ = Cart.objects.get_or_create(user=self.request.user)
         return cart.items.all()
@@ -143,7 +188,38 @@ class CheckoutView(APIView):
      and retries payment for a failed order
     """
     permission_classes = [IsVerifiedUser]
-    
+
+    @swagger_auto_schema(
+        operation_description="Process checkout - create order from cart and initiate payment",
+        security=['Bearer', 'Cookie'],
+        manual_parameters=[
+            openapi.Parameter('X-Idempotency-Key', openapi.IN_HEADER, description="Unique key to ensure idempotent checkout requests", type=openapi.TYPE_STRING, required=True)
+        ],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'address': openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address"),
+                'pickup': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="Whether customer will pick up order"),
+                'order_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="Order ID for payment retry (optional)")
+            }
+        ),
+        responses={
+            200: openapi.Response(
+                description="Checkout successful or payment retry processed",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - Idempotency key required or validation failed"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def post(self, request):
         user = request.user
         
@@ -195,6 +271,18 @@ class AddToCartView(APIView):
 
     permission_classes = [IsVerifiedUser]
 
+    @swagger_auto_schema(
+        operation_description="Add a product to the cart",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Product added to cart successfully",
+                schema=CartItemSerializer()
+            ),
+            404: openapi.Response(description="Product not found"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def post(self, request, product_pk):
         # create cart if it doesn't exist for user
         cart, created = Cart.objects.get_or_create(user=request.user)
@@ -262,6 +350,28 @@ class AddToCartView(APIView):
        
 class RemoveProductFromCartView(APIView):
 
+    permission_classes = [IsVerifiedUser]
+
+    @swagger_auto_schema(
+        operation_description="Remove a product from the cart",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Product removed from cart successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            404: openapi.Response(description="Product not found in cart"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def post(self, request, product_pk):
         try:
             cart = Cart.objects.get(user=request.user)
@@ -285,6 +395,28 @@ class RemoveProductFromCartView(APIView):
             )
 # decrement product quantity in cart
 class DecreMentProductQuantityInCartView(APIView):
+    permission_classes = [IsVerifiedUser]
+
+    @swagger_auto_schema(
+        operation_description="Decrement product quantity in cart by 1",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Product quantity decremented successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            404: openapi.Response(description="Product not found in cart"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def post(self, request, product_pk):
         try:
             cart = Cart.objects.get(user=request.user)
@@ -314,6 +446,29 @@ class DecreMentProductQuantityInCartView(APIView):
             )
         
 class IncrementProductQuantityInCartView(APIView):
+    permission_classes = [IsVerifiedUser]
+
+    @swagger_auto_schema(
+        operation_description="Increment product quantity in cart by 1",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Product quantity incremented successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - Insufficient stock"),
+            404: openapi.Response(description="Product not found in cart"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def post(self, request, product_pk):
         try:
             cart = Cart.objects.get(user=request.user)
@@ -352,6 +507,28 @@ class IncrementProductQuantityInCartView(APIView):
 
 # clear all cart
 class ClearCartView(APIView):
+    permission_classes = [IsVerifiedUser]
+
+    @swagger_auto_schema(
+        operation_description="Clear all items from the cart",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Cart cleared successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            404: openapi.Response(description="Cart not found"),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def post(self, request):
         try:
             cart = Cart.objects.get(user=request.user)
@@ -373,6 +550,32 @@ class ClearCartView(APIView):
             )
 
 class GetCartCountView(APIView):
+    permission_classes = [IsVerifiedUser]
+
+    @swagger_auto_schema(
+        operation_description="Get the number of items in the cart",
+        security=['Bearer', 'Cookie'],
+        responses={
+            200: openapi.Response(
+                description="Cart count retrieved successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        "message": openapi.Schema(type=openapi.TYPE_STRING),
+                        "data": openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                "count": openapi.Schema(type=openapi.TYPE_INTEGER)
+                            }
+                        ),
+                        "error": openapi.Schema(type=openapi.TYPE_STRING)
+                    }
+                )
+            ),
+            401: openapi.Response(description="Unauthorized - Authentication required")
+        }
+    )
     def get(self, request):
         try:
             cart = Cart.objects.get(user=request.user)

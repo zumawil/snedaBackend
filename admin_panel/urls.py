@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     # Dashboard
     DashboardStatsView,
+    SalesChartDataView,
     
     # Order Management
     AdminOrderListView,
@@ -38,6 +39,7 @@ from .views import (
 urlpatterns = [
     # Dashboard
     path('stats/', DashboardStatsView.as_view(), name='admin-dashboard-stats'),
+    path('sales-chart/', SalesChartDataView.as_view(), name='admin-sales-chart'),
     
     # Order Management
     path('orders/', AdminOrderListView.as_view(), name='admin-orders-list'),
@@ -50,9 +52,9 @@ urlpatterns = [
     # Product Management
     path('products/', AdminProductListView.as_view(), name='admin-products-list'),
     path('products/create/', AdminProductCreateView.as_view(), name='admin-product-create'),
-    path('products/<int:pk>/', AdminProductDetailView.as_view(), name='admin-product-detail'),
+    path('products/<str:pk>/', AdminProductDetailView.as_view(), name='admin-product-detail'),
     # path('products/<int:pk>/toggle-status/', AdminToggleProductStatusView.as_view(), name='admin-product-toggle-status'),  # Commented out
-    path('products/<int:pk>/stock/', AdminProductStockUpdateView.as_view(), name='admin-product-stock'),
+    path('products/<str:pk>/stock/', AdminProductStockUpdateView.as_view(), name='admin-product-stock'),
     path('product-images/', AdminProductImageView.as_view(), name='admin-product-images'),
     
     # Shipping Management

@@ -5,6 +5,7 @@ from rest_framework import authentication, permissions, status
 from django.contrib.auth import get_user_model
 from .serializers import UserSerializer, UserCreateSerializer, UserProfileUpdateSerializer
 from django.conf import settings
+import threading
 
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -23,28 +24,9 @@ from utils.sendEmail import send_otp_email
 from dotenv import load_dotenv
 import os
 from utils.apiResponse import api_response
-
+from .tasks import send_otp_email_task
+from django.db import transaction
 load_dotenv()
-
-def send_otp_to_user(user):
-    secret = pyotp.random_base32()
-    user.otp_secret = secret
-    user.save()
-
-    totp = pyotp.TOTP(secret, interval=300)
-    otp = totp.now()
-
-    from utils.email_templates import get_otp_email_html
-    otp_html = get_otp_email_html(otp)
-    
-    r = send_otp_email(
-        user.email,
-        "Your verification code from Sneda Ecommerce",
-        otp_html,
-    )
-    print(r)
-
-    return otp
 
 def verify_user_otp(user, otp_input):
     if not user.otp_secret:
@@ -118,6 +100,7 @@ class VerifyOTPView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+
 class SignupUser(APIView):
 
     """
@@ -130,16 +113,19 @@ class SignupUser(APIView):
     authentication_classes = []
     throttle_scope = 'sensitive'
 
+    @transaction.atomic
     def post(self, request):
         serializer = UserCreateSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
 
-            otp = send_otp_to_user(user)
+            transaction.on_commit(
+                lambda: send_otp_email_task.delay(user.id)
+            )
 
             return api_response(
                 success=True,
-                data={'otp':otp},
+                data=None,
                 message="User created successfully",
                 status_code=status.HTTP_201_CREATED
             )
@@ -352,6 +338,44 @@ class LogoutUserView(APIView):
             )
 
 
+class RequestOTPView(APIView):
+    """
+    View to manually request a new OTP.
+    Throttled to 5 requests per minute.
+    """
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+    throttle_scope = 'sensitive'
+
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return api_response(
+                success=False,
+                data=None,
+                error="Missing email",
+                message="Email field is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        User = get_user_model()
+        try:
+            user = User.objects.get(email=email)
+            if not user.verified:
+                from .tasks import send_manual_otp_email_task
+                send_manual_otp_email_task.delay(user.id)
+        except User.DoesNotExist:
+            pass
+        # don't return user not exist to prevent brute force attacks
+
+        return api_response(
+            success=True,
+            data=None,
+            message="If an unverified account with this email exists, an OTP has been sent.",
+            status_code=status.HTTP_200_OK
+        )
+
+
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.core.cache import cache
@@ -383,7 +407,7 @@ class TokenGenerator:
 
 class ChangePasswordRequestView(APIView):
     permission_classes = [permissions.AllowAny]
-    throttle_scope = 'sensitive'
+    throttle_scope = 'sensitive' # 5 requests per minute
 
     def post(self, request):
         email  = request.data.get('email')
@@ -407,19 +431,14 @@ class ChangePasswordRequestView(APIView):
         token.store_password_token(user.pk) # 15 min
 
         app_url = os.environ.get("APP_URL", "http://localhost:3000")
-        password_reset_url = f"{app_url.rstrip('/')}/users/reset-password-confirm/?uid={uid}&token={url_token}"
+        password_reset_url = f"{app_url.rstrip('/')}/password-reset/?uid={uid}&token={url_token}"
         from utils.email_templates import get_password_reset_html
-        reset_html = get_password_reset_html(password_reset_url)
-
-        send_otp_email(
-            [user.email],
-            "You requested for a password change",
-            reset_html,
-        )
+        from .tasks import send_password_reset_email_task
+        send_password_reset_email_task.delay(user.id, password_reset_url)
 
         return api_response(
             success=True,
-            data={'link': password_reset_url},
+            data=None,
             message='Password reset link has been sent to your email',
             status_code=status.HTTP_202_ACCEPTED
         )
@@ -521,7 +540,6 @@ class GetUserSession(APIView):
 
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
-
 
 class SearchUsers(APIView):
 
