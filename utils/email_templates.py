@@ -22,6 +22,31 @@ def get_otp_email_html(otp):
         </body>
     </html>
     """
+
+def get_manual_otp_email_html(otp):
+    return f"""
+    <!DOCTYPE html>
+    <html>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; margin: 0; padding: 0;">
+            <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
+                <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 40px 20px; text-align: center;">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">New Verification Code</h1>
+                </div>
+                <div style="padding: 40px; text-align: center;">
+                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">You requested a new verification code. Please use the following One-Time Password (OTP) to complete your verification:</p>
+                    <div style="background-color: #f3f4f6; border-radius: 12px; padding: 20px 40px; display: inline-block; margin-bottom: 24px; border: 1px solid #e5e7eb;">
+                        <span style="font-size: 36px; font-weight: 800; color: #1f2937; letter-spacing: 8px; font-family: 'Courier New', Courier, monospace;">{otp}</span>
+                    </div>
+                    <p style="color: #6b7280; font-size: 14px; line-height: 1.5;">This code is valid for <b>5 minutes</b>. If you did not request this, please safely ignore this email.</p>
+                </div>
+                <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
+                    <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+    </html>
+    """
+    
 # password reset email template
 def get_password_reset_html(password_reset_url):
     return f"""

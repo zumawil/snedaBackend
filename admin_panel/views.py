@@ -34,10 +34,21 @@ from django.db.models import Q
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi    
+from django.db.models.functions import TruncDate
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # DASHBOARD
 # ============================================================================
+
+
+def enqueue_task(task):
+    task_id = task.delay()
+    return task_id
+
 
 class DashboardStatsView(APIView):
     permission_classes = [IsVerifiedUser, IsAdminUser]
@@ -178,7 +189,7 @@ class SalesChartDataView(APIView):
 
     def get(self, request):
         try:
-            from django.db.models.functions import TruncDate
+            
 
             today = timezone.now().date()
             start_date = today - timedelta(days=29)  # 30 days including today
@@ -234,10 +245,11 @@ class SalesChartDataView(APIView):
                 status_code=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.exception("Error retrieving sales chart data: ", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="internal server error",
                 message="Error retrieving sales chart data",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
@@ -381,8 +393,7 @@ class AdminUpdateOrderStatusView(APIView):
 
         # Safe closure to avoid late-binding issues
         transaction.on_commit(
-            lambda oid=order.id, status=new_status, tn=tracking_number:
-                send_shipping_status_email_task.delay(oid, status, tn)
+            enqueue_task(send_shipping_status_email_task.delay(oid, status, tn))
         )
 
         serializer = OrderSerializer(order)
