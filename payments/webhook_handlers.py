@@ -13,6 +13,7 @@ from django.db.models import F
 from payments.models import Payment
 from products.models import Product
 from orders.models import Reservation
+from background_tasks.models import BackgroundJob
 import utils
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,32 @@ def handle_payment_success(reference, order_id):
             order.status = 'confirmed'
             order.save()
 
-            # Fire confirmation email in the background
-            send_confirmation_email_task.delay(order.id, payment.id)
+            # 1. Create the tracking record in 'pending' state
+            job = BackgroundJob.objects.create(
+                task_type="send_confirmation_email",
+                related_object_type="order",
+                related_object_id=order.id
+            )
+
+            # 2. Queue the Celery task safely
+            def dispatch_task():
+                try:
+                    result = send_confirmation_email_task.delay(job.id, order.id, payment.id)
+                except Exception as exc:
+                    logger.exception("Failed to enqueue confirmation email for order %s", order.id)
+                    job.mark_failed(f"Dispatch error: {exc!s}")
+                    return
+
+                try:
+                    BackgroundJob.objects.filter(pk=job.pk).update(task_id=result.id)
+                except Exception:
+                    logger.exception(
+                        "Queued confirmation email for order %s but failed to persist task_id for job %s",
+                        order.id,
+                        job.id,
+                    )
+
+            transaction.on_commit(dispatch_task)
 
             logger.info(f"Payment success handled for order {order.id}")
 

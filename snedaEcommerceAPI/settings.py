@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'notifications',
     'corsheaders',
     'admin_panel',
+    'background_tasks',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
