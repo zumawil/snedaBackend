@@ -14,7 +14,11 @@ class ReviewListCreateView(ListCreateAPIView):
     """
     
     serializer_class = ReviewsSerializer
-    permission_classes = [IsVerifiedUser]  
+    
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsVerifiedUser()]
 
     def get_queryset(self):
         """
@@ -27,37 +31,74 @@ class ReviewListCreateView(ListCreateAPIView):
             qs = qs.filter(product__item_no=product_item_no)
         return qs
 
-def list(self, request, *args, **kwargs): 
-    """
-    List reviews.
-    Optionally filter by product via ?product=<item_no>.
-    """
-    page = self.paginate_queryset(self.get_queryset())
-    if page is not None:
-        serializer = self.get_serializer(page, many=True)
-        paginated_response = self.get_paginated_response(serializer.data)
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            paginated_response = self.get_paginated_response(serializer.data)
+            return api_response(
+                success=True,
+                data=paginated_response.data,
+                message="Reviews retrieved successfully",
+                status_code=status.HTTP_200_OK,
+            )
 
+        serializer = self.get_serializer(queryset, many=True)
         return api_response(
             success=True,
-            data=paginated_response.data,
+            data={"results": serializer.data},
             message="Reviews retrieved successfully",
-            status_code=paginated_response.status_code,
+            status_code=status.HTTP_200_OK,
         )
 
-    serializer = self.get_serializer(queryset, many=True)
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return api_response(
+                success=True,
+                data=serializer.data,
+                message="Review created successfully",
+                status_code=status.HTTP_201_CREATED,
+            )
+        return api_response(
+            success=False,
+            data=None,
+            error="Validation failed",
+            message=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
-    return api_response(
-        success=True,
-        data=serializer.data,
-        message="Reviews retrieved successfully",
-        status_code=status.HTTP_200_OK,
-    )
+# def list(self, request, *args, **kwargs): 
+#     """
+#     List reviews.
+#     Optionally filter by product via ?product=<item_no>.
+#     """
+#     page = self.paginate_queryset(self.get_queryset())
+#     if page is not None:
+#         serializer = self.get_serializer(page, many=True)
+#         paginated_response = self.get_paginated_response(serializer.data)
+
+#         return api_response(
+#             success=True,
+#             data=paginated_response.data,
+#             message="Reviews retrieved successfully",
+#             status_code=paginated_response.status_code,
+#         )
+
+#     serializer = self.get_serializer(queryset, many=True)
+
+#     return api_response(
+#         success=True,
+#         data=serializer.data,
+#         message="Reviews retrieved successfully",
+#         status_code=status.HTTP_200_OK,
+#     )
 
 class ReviewDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = ReviewsSerializer
-    permission_classes = [AllowAny]
-    lookup_field = "product__item_no"
-    lookup_url_kwarg = "item_no"
+    permission_classes = [IsVerifiedUser]
 
     def get_queryset(self):
         # Scope to the requesting user's reviews if that's your rule; adjust as needed.

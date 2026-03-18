@@ -21,3 +21,7 @@ class Reviews(models.Model):
 
     def __str__(self):
         return f"Review by {self.user.email} on {self.product}"
+
+
+    class Meta:
+        ordering = ['-date_created']

@@ -115,7 +115,6 @@ class ProductImageCreateSerializer(serializers.ModelSerializer):
 
 #  serializer for retrieving product details
 class ProductSerializer(serializers.ModelSerializer):
-    reviews = ReviewsSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     product_group = ProductGroupSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
@@ -128,4 +127,4 @@ class ProductSerializer(serializers.ModelSerializer):
                   'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
                   'box_qty', 'inventory_qty', 'gross_price', 'brand',
                   'created_at', 'updated_at',
-                  'images', 'reviews']
+                  'images']
