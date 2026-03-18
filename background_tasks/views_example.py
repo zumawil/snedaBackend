@@ -17,7 +17,8 @@ class ExampleTaskTriggerView(APIView):
         job = BackgroundJob.objects.create(
             task_type="example_work",
             related_object_type="order",
-            related_object_id=related_id
+            related_object_id=related_id,
+            user=request.user
         )
 
         # 2. Queue the Celery task safely

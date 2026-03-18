@@ -68,13 +68,14 @@ def handle_payment_success(reference, order_id):
             job = BackgroundJob.objects.create(
                 task_type="send_confirmation_email",
                 related_object_type="order",
-                related_object_id=order.id
+                related_object_id=order.id,
+                user=order.user
             )
 
             # 2. Queue the Celery task safely
             def dispatch_task():
                 try:
-                    result = send_confirmation_email_task.delay(job.id, order.id, payment.id)
+                    result = send_confirmation_email_task.delay(job.id, order.id, payment.id, order.user.id)
                 except Exception as exc:
                     logger.exception("Failed to enqueue confirmation email for order %s", order.id)
                     job.mark_failed(f"Dispatch error: {exc!s}")

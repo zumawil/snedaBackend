@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_confirmation_email_task(self, job_id, order_id, payment_id):
+def send_confirmation_email_task(self, job_id, order_id, payment_id, user_id=None):
     """
     Background Celery task: build and send the order confirmation email.
     Retries up to 3 times (60-second delay) on any failure.
@@ -34,17 +34,20 @@ def send_confirmation_email_task(self, job_id, order_id, payment_id):
 
     # Mark job as processing
     job.mark_processing()
+    if user_id:
+        job.user_id = user_id
+        job.save(update_fields=['user'])
 
     try:
         order = Order.objects.get(id=order_id)
-        payment = Payment.objects.get(id=payment_id)
+        payment = Payment.objects.get(id=payment_id, order=order)
     except Order.DoesNotExist:
         logger.error(f"Order with id {order_id} not found for confirmation email task")
         job.mark_failed(f"Order {order_id} not found")
         return
     except Payment.DoesNotExist:
         logger.error(f"Payment with id {payment_id} not found for confirmation email task")
-        job.mark_failed(f"Payment {payment_id} not found")
+        job.mark_failed(f"Payment {payment_id} not found for order {order_id}")
         return
 
     order_items_summary = "\n".join([
