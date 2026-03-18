@@ -171,10 +171,10 @@ class PaymentCallback(APIView):
         if success:
             # payment = Payment.objects.get(paystack_reference=reference)
 
-            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
             return redirect(f'{frontend_url}/payment/success')
         else:
-            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+            frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:3000').rstrip('/')
             return redirect(f'{frontend_url}/payment/failure')
 
 @method_decorator(csrf_exempt, name='dispatch')

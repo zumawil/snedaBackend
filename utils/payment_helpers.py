@@ -38,7 +38,7 @@ def bill_user(amount, email, order_id=None, retry_count=0):
         "email": email,
         "amount": amount,
         "currency": "GHS",
-        "callback_url": f"{os.getenv('APP_URL')}payments/callback/"
+        "callback_url": f"{os.getenv('BACKEND_URL', 'http://localhost:8000/')}payments/callback/"
     }
     
     if reference:
