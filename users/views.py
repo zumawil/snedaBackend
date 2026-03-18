@@ -124,7 +124,8 @@ class SignupUser(APIView):
             job = BackgroundJob.objects.create(
                 task_type="send_otp_email",
                 related_object_type="user",
-                related_object_id=user.id
+                related_object_id=user.id,
+                user=user
             )
 
             def dispatch_task():
@@ -381,7 +382,8 @@ class RequestOTPView(APIView):
                 job = BackgroundJob.objects.create(
                     task_type="send_manual_otp_email",
                     related_object_type="user",
-                    related_object_id=user.id
+                    related_object_id=user.id,
+                    user=user
                 )
 
                 # 2. Queue the Celery task safely
@@ -466,7 +468,8 @@ class ChangePasswordRequestView(APIView):
         job = BackgroundJob.objects.create(
             task_type="send_password_reset_email",
             related_object_type="user",
-            related_object_id=user.id
+            related_object_id=user.id,
+            user=user
         )
 
         # 2. Queue the Celery task safely

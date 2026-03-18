@@ -392,12 +392,13 @@ class AdminUpdateOrderStatusView(APIView):
         job = BackgroundJob.objects.create(
             task_type="send_shipping_status_email",
             related_object_type="order",
-            related_object_id=order.id
+            related_object_id=order.id,
+            user=request.user
         )
 
         # 2. Queue the Celery task safely
         def dispatch_task():
-            result = send_shipping_status_email_task.delay(job.id, order.id, new_status, tracking_number)
+            result = send_shipping_status_email_task.delay(job.id, order.id, new_status, request.user.id, tracking_number)
             # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
@@ -459,12 +460,13 @@ class AdminOrderApproveView(APIView):
         job = BackgroundJob.objects.create(
             task_type="send_order_approved_email",
             related_object_type="order",
-            related_object_id=order.id
+            related_object_id=order.id,
+            user=request.user
         )
 
         # 2. Queue the Celery task safely
         def dispatch_task():
-            result = send_order_approved_email_task.delay(job.id, order.id)
+            result = send_order_approved_email_task.delay(job.id, order.id, request.user.id)
             # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
@@ -531,12 +533,13 @@ class AdminOrderRejectView(APIView):
         job = BackgroundJob.objects.create(
             task_type="send_order_disapproved_email",
             related_object_type="order",
-            related_object_id=order.id
+            related_object_id=order.id,
+            user=request.user
         )
 
         # 2. Queue the Celery task safely
         def dispatch_task():
-            result = send_order_disapproved_email_task.delay(job.id, order.id, reason)
+            result = send_order_disapproved_email_task.delay(job.id, order.id, request.user.id, reason)
             # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
@@ -606,12 +609,13 @@ class AdminOrderCancelView(APIView):
         job = BackgroundJob.objects.create(
             task_type="send_order_cancelled_email",
             related_object_type="order",
-            related_object_id=order.id
+            related_object_id=order.id,
+            user=request.user
         )
 
         # 2. Queue the Celery task safely
         def dispatch_task():
-            result = send_order_cancelled_email_task.delay(job.id, order.id)
+            result = send_order_cancelled_email_task.delay(job.id, order.id, request.user.id)
             # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])

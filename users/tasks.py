@@ -5,6 +5,7 @@ from utils.email_templates import get_otp_email_html, get_password_reset_html, g
 import logging
 import pyotp
 from background_tasks.models import BackgroundJob
+from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -23,20 +24,23 @@ def send_otp_email_task(self, job_id, user_id):
 
     # Mark job as processing
     job.mark_processing()
+    if user_id:
+        job.user_id = user_id
+        job.save(update_fields=['user'])
     logger.info(f"Started processing job {job_id}")
 
-    # Fetch user
+    # Fetch user and generate OTP secret if missing
+    # Use select_for_update to prevent race conditions
     try:
-        user = User.objects.get(id=user_id)
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(id=user_id)
+            if not user.otp_secret:
+                user.otp_secret = pyotp.random_base32()
+                user.save(update_fields=["otp_secret"])
     except User.DoesNotExist:
         logger.error(f"User with id {user_id} not found for OTP email task")
         job.mark_failed(f"User with id {user_id} not found")
         return
-
-    # Generate OTP secret if missing
-    if not user.otp_secret:
-        user.otp_secret = pyotp.random_base32()
-        user.save(update_fields=["otp_secret"])
 
     # Generate OTP (valid for 5 minutes)
     totp = pyotp.TOTP(user.otp_secret, interval=300)
@@ -85,6 +89,9 @@ def send_manual_otp_email_task(self, job_id, user_id):
 
     # Mark job as processing
     job.mark_processing()
+    if user_id:
+        job.user_id = user_id
+        job.save(update_fields=['user'])
     logger.info(f"Started processing job {job_id}")
 
     # Fetch user
@@ -144,6 +151,9 @@ def send_password_reset_email_task(self, job_id, user_id, password_reset_url):
 
     # Mark job as processing
     job.mark_processing()
+    if user_id:
+        job.user_id = user_id
+        job.save(update_fields=['user'])
     logger.info(f"Started processing job {job_id}")
 
     # Fetch user

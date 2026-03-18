@@ -72,3 +72,4 @@ urlpatterns = [
     # Notification Management
     path('notifications/create/', AdminCreateNotificationView.as_view(), name='admin-notification-create'),
 ]
+

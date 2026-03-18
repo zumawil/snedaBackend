@@ -1,6 +1,7 @@
 from django.db import models
 import uuid
 from django.utils import timezone
+from users.models import CustomUser
 
 class BackgroundJob(models.Model):
     class Status(models.TextChoices):
@@ -22,6 +23,9 @@ class BackgroundJob(models.Model):
     # Generic relation to related objects (simplified)
     related_object_type = models.CharField(max_length=100)
     related_object_id = models.BigIntegerField()
+
+    # user who created the job
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
