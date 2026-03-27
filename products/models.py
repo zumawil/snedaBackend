@@ -43,7 +43,6 @@ class Product(models.Model):
     gross_price = models.DecimalField(max_digits=10, decimal_places=2)
     brand = models.ForeignKey(Brand, related_name='products', on_delete=models.CASCADE)
 
-    in_stock = models.IntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -120,11 +120,12 @@ class ProductSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     hs_code = HSCodeSerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
+    available_stock = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Product
         fields = ['item_no', 'product_group', 'category',
                   'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
-                  'box_qty', 'inventory_qty', 'gross_price', 'brand',
+                  'box_qty', 'inventory_qty', 'available_stock', 'gross_price', 'brand',
                   'created_at', 'updated_at',
                   'images']

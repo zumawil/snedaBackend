@@ -1,10 +1,13 @@
+import logging
 from datetime import timedelta
 from django.utils import timezone
 from orders.models import Order
-from services.checkout_service import CheckoutService
 from utils.paymentConstants import PaymentStatus
 from payments.models import Payment
 from django.db.models import Exists, OuterRef
+from services.checkout_service import CheckoutService
+
+logger = logging.getLogger(__name__)
 
 def cancel_unpaid_orders():
     timeout = timezone.now() - timedelta(minutes=30)
@@ -16,10 +19,16 @@ def cancel_unpaid_orders():
     )
     
     unpaid_orders = Order.objects.filter(
-        created_at__lt=timeout
+        created_at__lt=timeout,
+        status=Order.Status.PENDING
     ).exclude(
         Exists(has_successful_payment)
     )
     
+    count = 0
     for order in unpaid_orders:
         CheckoutService._cancel_order_and_restore_stock(order)
+        count += 1
+        
+    if count > 0:
+        logger.info(f"Cleanup Task: Cancelled and restored stock for {count} abandoned orders.")

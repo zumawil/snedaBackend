@@ -39,7 +39,6 @@ The core product model.
 | `inventory_qty` | IntegerField | Total stock quantity. |
 | `gross_price` | DecimalField | Price. |
 | `brand` | ForeignKey | Relation to `Brand`. |
-| `in_stock` | IntegerField | Current available stock. |
 | `created_at` | DateTimeField | Timestamp of creation. |
 | `updated_at` | DateTimeField | Timestamp of last update. |
 
@@ -79,6 +78,7 @@ Customer orders.
 | :--- | :--- | :--- |
 | `user` | ForeignKey | The user who placed the order. |
 | `total_amount` | DecimalField | Total order value. |
+| `status` | CharField | PENDING, PAID, FULFILLED, DELIVERED, CANCELLED. |
 | `approved` | BooleanField | Admin approval status. |
 | `created_at` | DateTimeField | Creation timestamp. |
 

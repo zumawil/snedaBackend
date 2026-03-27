@@ -45,18 +45,41 @@ class OrderSerializer(serializers.ModelSerializer):
     status = serializers.SerializerMethodField()
     payment = serializers.SerializerMethodField()
     shipping = serializers.SerializerMethodField()
+    fulfillment = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
-        fields = ['id', 'status','total_amount', 'created_at', 'items', 'payment', 'shipping', 'approved']
-        read_only_fields = ['total_amount', 'payment', 'created_at']
+        fields = ['id', 
+                'order_id', 
+                'status',
+                'total_amount', 
+                'created_at', 
+                'items', 
+                'payment', 
+                'shipping', 
+                'approved',
+                'shipping_address',
+                'fulfillment',
+                'marked_for_review'
+        ]
+        read_only_fields = ['total_amount', 'payment', 'created_at', 'marked_for_review']
 
     def get_shipping(self, obj):
         from shipping.serializers import ShippingSerializer
         shipping = getattr(obj, 'shipping', None)
-        if shipping:
+        # For production-grade, we only return shipping record if it's NOT a pickup
+        # and if the record actually exists.
+        if shipping and not obj.is_pickup:
             return ShippingSerializer(shipping).data
         return None
+
+    def get_fulfillment(self, obj):
+        return {
+            "type": obj.fulfillment_type,
+            "is_pickup": obj.is_pickup,
+            "pickup_location": obj.pickup_location,
+            "display_address": obj.fulfillment_display_address
+        }
 
     def get_status(self, obj):
         # expose the effective status derived from shipping when present
@@ -108,10 +131,10 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Order
-        fields = ['id', 'total_amount','payment',
+        fields = ['id', 'order_id', 'total_amount','payment',
          'created_at', 'effective_status', 
-                  'user',
+                  'user', 'marked_for_review',
                   'fulfillment_status']
         read_only_fields = ['total_amount','payment', 'created_at', 
-                            'effective_status', 'user', 
+                            'effective_status', 'user', 'marked_for_review',
                             'fulfillment_status']

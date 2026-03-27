@@ -19,20 +19,8 @@ import utils.paymentConstants
 logger = logging.getLogger(__name__)
 
 class CheckoutService:
-    @staticmethod
-    def create_shipping(order, address, pickup=False):
-        """
-        Create a shipping record for an order.
-        """
-        tracking_number = generate_tracking_number()
-        Shipping.objects.create(
-            order=order,
-            status="pending",
-            tracking_number=tracking_number,
-            address=address,
-            pickup=pickup
-        )
-        return tracking_number
+    # Shipping is now handled post-payment via ShippingService.
+    # Legacy create_shipping method removed from here.
 
     @staticmethod
     def handle_payment_retry(order_id, user, max_retries=3):
@@ -124,19 +112,43 @@ class CheckoutService:
         new_retry_count = current_retry_count + 1
         logger.info(f"payment status retrying because it failed: {current_status}")
 
-        # reserve stock for the order
+        # Ensure a reservation exists and check available stock
         try:
             with transaction.atomic():
+                # If we're retrying, a reservation might already exist (though possibly expired)
+                # We should ensure the reservation is active or create a new one.
                 for item in order.items.all():
                     product = Product.objects.select_for_update().get(pk=item.product.pk)
-                    if product.inventory_qty < item.quantity:
-                        return {
-                            'success': False,
-                            'error': 'Out of stock',
-                            'message': f'Sorry, {product.item_no} is now out of stock and cannot be retried.'
-                        }
-                    product.inventory_qty -= item.quantity
-                    product.save()
+                    
+                    # Check if reservation already exists
+                    reservation, created = Reservation.objects.get_or_create(
+                        order=order,
+                        product=product,
+                        defaults={'quantity': item.quantity}
+                    )
+                    
+                    if not created:
+                        # If it exists, check if it's still valid or needs updating
+                        if reservation.status != Reservation.Status.ACTIVE or reservation.is_expired():
+                            # Re-verify stock availability before re-activating
+                            available = product.available_stock()
+                            if available < item.quantity:
+                                return {
+                                    'success': False,
+                                    'error': 'Out of stock',
+                                    'message': f'Sorry, {product.item_no} is now out of stock and cannot be retried.'
+                                }
+                            reservation.status = Reservation.Status.ACTIVE
+                            reservation.expires_at = timezone.now() + timezone.timedelta(minutes=15)
+                            reservation.save()
+                    else:
+                        # New reservation created, check available stock
+                        available = product.available_stock()
+                        if available < item.quantity:
+                            raise Exception(f'Insufficient stock for product {product.item_no}.')
+                        # reservation was already created with ACTIVE status and default expiry in defaults or Meta
+                        # but let's be explicit if needed.
+                        pass
 
         except Exception as e:
             logger.error(f"Error retrying payment for order #{order_id}: {str(e)}")
@@ -198,7 +210,7 @@ class CheckoutService:
             }
 
     @staticmethod
-    def process_checkout(user, idempotency_key, address, pickup):
+    def process_checkout(user, idempotency_key, address, pickup, pickup_location=None):
         """
         Coordinates the entire checkout process:
         1. Idempotency check & stock reservation (atomic)
@@ -206,7 +218,7 @@ class CheckoutService:
         """
         try:
             # Phase 1: Check idempotency and reserve stock (in transaction)
-            result = CheckoutService._create_order_and_reserve_stock(user, idempotency_key)
+            result = CheckoutService._create_order_and_reserve_stock(user, idempotency_key, address, pickup, pickup_location)
             
             # If it's a dict, it's a response (likely duplicate order)
             if isinstance(result, dict):
@@ -215,7 +227,7 @@ class CheckoutService:
             order, amount = result
             
             # Phase 2: External calls (outside transaction)
-            return CheckoutService._process_payment_and_shipping(user, order, amount, address, pickup)
+            return CheckoutService._process_payment_and_shipping(user, order, amount)
             
         except Cart.DoesNotExist:
              return {
@@ -234,11 +246,11 @@ class CheckoutService:
             }
 
     @staticmethod
-    def _create_order_and_reserve_stock(user, idempotency_key):
+    def _create_order_and_reserve_stock(user, idempotency_key, address, pickup, pickup_location=None):
         """
         Phase 1: Atomically check idempotency, create order, and reserve stock.
             Returns: (order, amount) tuple or response dict if order already exists
-            create a reservation foor the order items instead of touching stock directly. 
+            create a reservation for the order items instead of touching stock directly. 
             This allows to handle payment failures more gracefully without risking stock inconsistencies.
         """
         with transaction.atomic():
@@ -260,8 +272,14 @@ class CheckoutService:
             if not items:
                 raise Exception("Cart is empty. Please add items before checkout.")
 
-            # Create order
-            order = Order.objects.create(user=user)
+            # Create order with shipping intent and initial status
+            order = Order.objects.create(
+                user=user,
+                status=Order.Status.PENDING,
+                shipping_address=address if not pickup else None,
+                is_pickup=pickup,
+                pickup_location=pickup_location if pickup else None
+            )
         
             # Link order to checkout attempt for idempotency
             attempt.order = order
@@ -348,16 +366,12 @@ class CheckoutService:
             }
 
     @staticmethod
-    def _process_payment_and_shipping(user, order, amount, address, pickup):
+    def _process_payment_and_shipping(user, order, amount):
         """
-        Phase 2: Process external payment and shipping (outside transaction).
-        This prevents holding database locks during slow external API calls.
+        Phase 2: Process external payment (outside transaction).
+        Shipping is now deferred until payment confirmation (webhook).
         """
         try:
-            # Create shipping record and get tracking number
-            tracking_number = CheckoutService.create_shipping(order, address, pickup)
-            logger.info(f"Shipping created with tracking number: {tracking_number}")
-
             # Initiate payment with external provider
             data = bill_user(amount, user.email, order_id=order.id, retry_count=0)
 
@@ -405,21 +419,6 @@ class CheckoutService:
     @staticmethod
     def _cancel_order_and_restore_stock(order):
         """
-        Cancel order and restore stock if payment fails.
-        Uses Shipping.status for cancellation and prevents duplicate restocks.
+        Cancel order and restore stock if payment initialization fails.
         """
-        with transaction.atomic():
-            shipping = getattr(order, 'shipping', None)
-            if shipping and shipping.status == 'cancelled':
-                logger.info(f"Order {order.id} already cancelled, skipping restock.")
-                return
-            # Restore stock for each order item
-            for order_item in order.items.select_for_update().all():
-                product = Product.objects.select_for_update().get(pk=order_item.product.pk)
-                product.inventory_qty += order_item.quantity
-                product.save()
-            # Mark shipping as cancelled
-            if shipping:
-                shipping.status = 'cancelled'
-                shipping.save()
-            logger.info(f"Order {order.id} cancelled and stock restored")
+        order.restore_stock()

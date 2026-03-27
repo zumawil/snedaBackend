@@ -68,7 +68,8 @@ class DashboardStatsView(APIView):
                                     type=openapi.TYPE_OBJECT,
                                     properties={
                                         "total_revenue_for_today": openapi.Schema(type=openapi.TYPE_NUMBER, description="Total revenue for today"),
-                                        "total_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders today"),
+                                        "orders_today": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders today"),
+                                        "total_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders all time"),
                                         "total_products": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total products in system"),
                                         "total_pending_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total pending orders"),
                                         "total_users": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total registered users"),
@@ -112,7 +113,8 @@ class DashboardStatsView(APIView):
         try:
             today = timezone.now().date()
             total_revenue = Payment.objects.filter(status='success', date_created__date=today).aggregate(Sum('amount'))['amount__sum'] or 0
-            total_orders = Order.objects.filter(created_at__date=today).count()
+            orders_today = Order.objects.filter(created_at__date=today).count()
+            total_orders = Order.objects.count()
             total_pending_orders = Order.objects.filter(Q(shipping__status='pending') | Q(shipping__isnull=True)).count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
@@ -152,6 +154,7 @@ class DashboardStatsView(APIView):
             data = {
                 "stats": {
                     "total_revenue_for_today": float(total_revenue),
+                    "orders_today": orders_today,
                     "total_orders": total_orders,
                     "total_products": total_products,
                     'total_pending_orders': total_pending_orders,
@@ -265,6 +268,9 @@ class AdminOrderListView(APIView):
         security=['Bearer', 'Cookie'],
         manual_parameters=[
             openapi.Parameter('status', openapi.IN_QUERY, description="Filter by shipping status (pending, shipped, delivered, cancelled)", type=openapi.TYPE_STRING),
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search by ID, email, or name", type=openapi.TYPE_STRING),
+            openapi.Parameter('start_date', openapi.IN_QUERY, description="Start date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+            openapi.Parameter('end_date', openapi.IN_QUERY, description="End date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
         ],
@@ -279,8 +285,11 @@ class AdminOrderListView(APIView):
     )
     def get(self, request):
         try:
-            # Support filtering by status
+            # Support filtering by status and search
             order_status = request.query_params.get('status', None)
+            search_query = request.query_params.get('search', None)
+            start_date = request.query_params.get('start_date', None)
+            end_date = request.query_params.get('end_date', None)
             orders = Order.objects.all().order_by('-created_at')
             
             if order_status:
@@ -288,6 +297,17 @@ class AdminOrderListView(APIView):
                     orders = orders.filter(Q(shipping__status='pending') | Q(shipping__isnull=True))
                 else:
                     orders = orders.filter(shipping__status=order_status)
+                    
+            if search_query:
+                conditions = Q(user__email__icontains=search_query) | Q(user__first_name__icontains=search_query) | Q(user__last_name__icontains=search_query)
+                if search_query.isdigit():
+                    conditions |= Q(id=search_query)
+                orders = orders.filter(conditions)
+                
+            if start_date:
+                orders = orders.filter(created_at__date__gte=start_date)
+            if end_date:
+                orders = orders.filter(created_at__date__lte=end_date)
             
             paginator = self.pagination_class()
             result_page = paginator.paginate_queryset(orders, request)
@@ -856,6 +876,12 @@ class AdminProductDetailView(APIView):
                 brand, _ = Brand.objects.get_or_create(name=brand_name)
                 data['brand'] = brand.id
 
+            # Handle HS Code
+            hs_code_value = data.get('hs_code')
+            if hs_code_value:
+                hs_code, _ = HSCode.objects.get_or_create(code=hs_code_value)
+                data['hs_code'] = hs_code.id
+
             serializer = ProductCreateUpdateSerializer(product, data=data)
             if serializer.is_valid():
                 serializer.save()
@@ -1369,7 +1395,6 @@ class AdminUserDetailView(APIView):
             
             data = {
                 "user": user_serializer.data,
-                "orders": order_serializer.data,
                 "total_orders": order_stats['total_orders'],
                 "total_spent": float(order_stats['total_spent'] or 0)
             }

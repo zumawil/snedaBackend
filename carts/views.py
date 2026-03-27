@@ -200,6 +200,7 @@ class CheckoutView(APIView):
             properties={
                 'address': openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address"),
                 'pickup': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="Whether customer will pick up order"),
+                'pickup_location': openapi.Schema(type=openapi.TYPE_STRING, description="Selected pickup branch location"),
                 'order_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="Order ID for payment retry (optional)")
             }
         ),
@@ -256,8 +257,9 @@ class CheckoutView(APIView):
             
         address = request.data.get('address')
         pickup = str(request.data.get('pickup', '')).lower() == 'true'
+        pickup_location = request.data.get('pickup_location') # Frontend sends pickup_name as requested
 
-        result = CheckoutService.process_checkout(user, idempotency_key, address, pickup)
+        result = CheckoutService.process_checkout(user, idempotency_key, address, pickup, pickup_location)
 
         return api_response(
             success=result.get('success', False),

@@ -291,23 +291,14 @@ class OrderCancelView(APIView):
             order = get_object_or_404(Order, pk=pk, user=request.user)
             # use effective_status (shipping-derived when present) to decide
             current_status = order.effective_status
-            if current_status == "pending":
-                # Restore stock for each order item
-                for item in order.items.all():
-                    Product.objects.filter(
-                        id=item.product.id
-                    ).update(stock=F('stock') + item.quantity)
-                # cancel any linked shipping record if present
-                if hasattr(order, 'shipping') and order.shipping:
-                    # logger.info(f"Cancelling shipping for order {order.id}")
-                    order.shipping.status = 'cancelled'
-                    order.shipping.save()
-                    # logger.info(f"Shipping cancelled for order {order.id}")
-                # nothing to write to Order model; shipping holds the state
+            if current_status in ["pending", "paid", "fulfilled"]:
+                # The restore_stock logic safely handles reservations, cancellation, shipping, and refunds.
+                order.restore_stock(trigger_refund=True)
+                
                 return api_response(
                     success=True,
                     data=None,
-                    message="Order cancelled successfully",
+                    message="Order cancelled successfully. Refunds will process if applicable.",
                     status_code=status.HTTP_200_OK
                 )
             elif current_status == 'cancelled':

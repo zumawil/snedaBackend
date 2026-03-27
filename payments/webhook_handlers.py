@@ -8,11 +8,14 @@ offloaded to a Celery background task.
 """
 
 import logging
+from datetime import timedelta
+from django.utils import timezone
 from django.db import transaction
 from django.db.models import F
 from payments.models import Payment
 from products.models import Product
-from orders.models import Reservation
+from orders.models import Reservation, Order
+from services.fulfillment_service import FulfillmentService
 from background_tasks.models import BackgroundJob
 import utils
 
@@ -26,7 +29,8 @@ def handle_payment_success(reference, order_id):
     - Marks the payment as SUCCESS
     - Deducts stock and confirms reservations
     - Clears the user's cart
-    - Updates the order status to 'confirmed'
+    - Updates the order status to 'paid'
+    - Triggers fulfillment (shipping, etc.)
     - Fires a Celery task to send an order confirmation email
     """
     # Import here to avoid circular imports (tasks -> webhook_handlers -> tasks)
@@ -43,57 +47,95 @@ def handle_payment_success(reference, order_id):
             payment.is_processed = True
             payment.save()
 
-            order = payment.order
+            # Defense in Depth: Lock the order and check if already processed
+            order = Order.objects.select_for_update().get(pk=payment.order.pk)
+            if order.status == Order.Status.PAID or order.status == Order.Status.FULFILLED:
+                logger.info(f"Order {order.id} already paid or fulfilled, skipping stock deduction")
+                return
 
             # Confirm reservations and deduct actual stock
             reservations = Reservation.objects.select_for_update().filter(
                 order=order,
-                status=Reservation.Status.ACTIVE
+                status__in=[Reservation.Status.ACTIVE, Reservation.Status.EXPIRED]
             )
-            for reservation in reservations:
-                Product.objects.filter(pk=reservation.product.pk).update(
-                    inventory_qty=F('inventory_qty') - reservation.quantity
-                )
-                reservation.status = Reservation.Status.CONFIRMED
-                reservation.save()
+            
+            # Now handle stock deduction and order status
+            try:
+                # 1. First, check availability for ALL items in the order
+                # This ensures we don't partially fulfill an order.
+                items_to_deduct = []
+                for reservation in reservations:
+                    # Use a 2-minute grace period for late webhooks
+                    grace_expiry = reservation.expires_at + timedelta(minutes=2)
+                    is_actually_expired = timezone.now() > grace_expiry
+                    
+                    if is_actually_expired or reservation.status == Reservation.Status.EXPIRED:
+                        available = reservation.product.available_stock()
+                        if available < reservation.quantity:
+                             logger.critical(
+                                 f"STOCK OVERSELL: Order {order.id} paid for {reservation.product.item_no} "
+                                 f"but stock is unavailable (Available: {available}, Requested: {reservation.quantity})."
+                             )
+                             raise ValueError(f"Insufficient stock for product {reservation.product.item_no}")
 
-            # Clear cart
-            order.user.cart.items.all().delete()
+                    items_to_deduct.append(reservation)
 
-            # Update order status
-            order.status = 'confirmed'
-            order.save()
-
-            # 1. Create the tracking record in 'pending' state
-            job = BackgroundJob.objects.create(
-                task_type="send_confirmation_email",
-                related_object_type="order",
-                related_object_id=order.id,
-                user=order.user
-            )
-
-            # 2. Queue the Celery task safely
-            def dispatch_task():
-                try:
-                    result = send_confirmation_email_task.delay(job.id, order.id, payment.id, order.user.id)
-                except Exception as exc:
-                    logger.exception("Failed to enqueue confirmation email for order %s", order.id)
-                    job.mark_failed(f"Dispatch error: {exc!s}")
-                    return
-
-                try:
-                    BackgroundJob.objects.filter(pk=job.pk).update(task_id=result.id)
-                except Exception:
-                    logger.exception(
-                        "Queued confirmation email for order %s but failed to persist task_id for job %s",
-                        order.id,
-                        job.id,
+                # 2. Now perform atomic deduction for all items
+                for reservation in items_to_deduct:
+                    updated = Product.objects.filter(
+                        pk=reservation.product.pk,
+                        inventory_qty__gte=reservation.quantity
+                    ).update(
+                        inventory_qty=F('inventory_qty') - reservation.quantity
                     )
 
-            transaction.on_commit(dispatch_task)
+                    if updated == 0:
+                        raise ValueError(f"Concurrency error: Stock taken for {reservation.product.item_no}")
 
-            logger.info(f"Payment success handled for order {order.id}")
+                    reservation.status = Reservation.Status.CONFIRMED
+                    reservation.save()
 
+                # Clear cart
+                order.user.cart.items.all().delete()
+
+                # Update order status to PAID (fulfillment follows)
+                order.status = Order.Status.PAID
+                order.save()
+
+                # 1. Create the tracking record for email
+                job = BackgroundJob.objects.create(
+                    task_type="send_confirmation_email",
+                    related_object_type="order",
+                    related_object_id=order.id,
+                    user=order.user
+                )
+
+                # 2. Queue the Celery task and Fulfillment safely
+                def dispatch_post_payment_actions():
+                    try:
+                        FulfillmentService.handle_post_payment(order)
+                    except Exception:
+                        logger.exception("Failed to trigger fulfillment for order %s", order.id)
+
+                    try:
+                        result = send_confirmation_email_task.delay(job.id, order.id, payment.id, order.user.id)
+                        BackgroundJob.objects.filter(pk=job.pk).update(task_id=result.id)
+                    except Exception as exc:
+                        logger.exception("Failed to enqueue confirmation email for order %s", order.id)
+                        job.mark_failed(f"Dispatch error: {exc!s}")
+
+                transaction.on_commit(dispatch_post_payment_actions)
+                logger.info(f"Payment success handled for order {order.id}")
+
+            except ValueError as e:
+                # We do NOT rollback the entire transaction because we want to keep
+                # the payment marked as SUCCESS (since we have the money).
+                # We only log the failure. The Order remains PENDING or PAID (without fulfillment).
+                logger.error(f"Fulfillment blocked for PAID order {order.id}: {str(e)}")
+                order.marked_for_review = True
+                order.status = Order.Status.PAID
+                order.save(update_fields=['marked_for_review', 'status'])
+                
     except Payment.DoesNotExist:
         logger.info(f"Payment {reference} not found or already processed")
 

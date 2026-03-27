@@ -17,6 +17,7 @@ class ShippingSerializer(serializers.ModelSerializer):
             "address",
             "date_created",
             "pickup",
+            "pickup_location",
         ]
 
     
