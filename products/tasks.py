@@ -1,6 +1,9 @@
 from celery import shared_task
 from orders.models import Reservation
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 @shared_task
 def expire_reservations():
@@ -9,9 +12,9 @@ def expire_reservations():
         status=Reservation.Status.ACTIVE,
         expires_at__lt=timezone.now()
     )
-    count = reservations.count()  # capture before the loop mutates state
+    count = reservations.count()  
     for reservation in reservations:
         reservation.status = Reservation.Status.EXPIRED
         reservation.save()
-    print(f"Expired {count} reservations")
+    logger.info(f"Expired {count} reservations")
     return f"Expired {count} reservations"

@@ -153,12 +153,13 @@ def get_order_disapproved_html(order_id, user_first_name, reason=None):
             <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
                 <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
             </div>
+            </div>
         </div>
     </body>
     </html>
     """
 
-def get_shipping_status_update_html(order_id, user_first_name, new_status, tracking_number=None):
+def get_shipping_status_update_html(order_id, user_first_name, new_status, tracking_number=None, fulfillment=None):
     # Status display mapping
     status_display = {
         'pending': ('Pending', '#f59e0b'),
@@ -172,12 +173,29 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
     
     status_text, status_color = status_display.get(new_status.lower(), (new_status, '#6b7280'))
     
-    tracking_section = f"""
+    fulfillment_section = ""
+    if fulfillment:
+        f_type = fulfillment.get('type', 'delivery').capitalize()
+        f_location = fulfillment.get('pickup_location', 'N/A')
+        f_address = fulfillment.get('display_address', 'N/A')
+        
+        fulfillment_section = f"""
+                <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin-top: 16px; border: 1px solid #e5e7eb;">
+                    <h3 style="margin-top: 0; color: #1f2937; font-size: 16px;">Fulfillment Details</h3>
+                    <ul style="list-style-type: none; padding: 0; margin: 0; color: #4b5563; font-size: 14px;">
+                        <li style="margin-bottom: 8px;"><b>Method:</b> {f_type}</li>
+                        {f'<li style="margin-bottom: 8px;"><b>Pickup Location:</b> {f_location}</li>' if fulfillment.get('is_pickup') else ''}
+                        <li><b>Address:</b> {f_address}</li>
+                    </ul>
+                </div>
+        """
+    elif tracking_number:
+        fulfillment_section = f"""
                 <div style="background-color: #f9fafb; border-radius: 8px; padding: 16px; margin-top: 16px; border: 1px solid #e5e7eb;">
                     <p style="color: #4b5563; font-size: 14px; margin: 0;"><b>Tracking Number:</b> {tracking_number}</p>
                 </div>
-    """ if tracking_number else ""
-    
+        """
+
     return f"""
     <!DOCTYPE html>
     <html>
@@ -195,7 +213,7 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
                     <span style="font-size: 24px; font-weight: 700; color: {status_color}; text-transform: uppercase;">{status_text}</span>
                 </div>
                 
-                {tracking_section}
+                {fulfillment_section}
                 
                 <p style="color: #6b7280; font-size: 14px; line-height: 1.5; margin-top: 24px;">Thank you for shopping with Sneda Ecommerce!</p>
             </div>

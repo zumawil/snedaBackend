@@ -159,6 +159,15 @@ class Order(models.Model):
             if not Order.objects.filter(order_id=new_id).exists():
                 return new_id
 
+    @property
+    def fulfillment(self):
+        return {
+            "type": self.fulfillment_type,
+            "is_pickup": self.is_pickup,
+            "pickup_location": self.pickup_location,
+            "display_address": self.fulfillment_display_address
+        }
+
     def save(self, *args, **kwargs):
         if not self.order_id:
             self.order_id = self.generate_unique_order_id()

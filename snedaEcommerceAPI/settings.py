@@ -84,9 +84,13 @@ CELERY_TASK_ACKS_LATE = True          # only ack after the task completes
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1 # one task per worker at a time (safer for payment work)
 # celery beat schedule
 CELERY_BEAT_SCHEDULE = {
-    'expire-reservations-every-minute': {
+    'expire-reservations-every-15-minutes': {
         'task': 'products.tasks.expire_reservations',
-        'schedule': crontab(minute='*/1'),
+        'schedule': crontab(minute='*/15'),
+    },
+    'cancel-unpaid-orders-every-30-minutes': {
+        'task': 'orders.tasks.cancel_unpaid_orders',
+        'schedule': crontab(minute='*/30'),
     },
 }
 # Custom user model

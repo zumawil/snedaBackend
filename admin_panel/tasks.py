@@ -177,7 +177,7 @@ def send_order_disapproved_email_task(self, job_id, order_id, user_id=None, reas
         logger.error(f"Failed to mark job {job_id} as completed: {str(e)}")
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_shipping_status_email_task(self, job_id, order_id, new_status, user_id=None, tracking_number=None):
+def send_shipping_status_email_task(self, job_id, order_id, new_status, user_id=None, order_id_display=None, fulfillment=None):
     """
     Background Celery task: send email when shipping status is updated.
     Retries up to 3 times (60-second delay) on any failure.
@@ -207,10 +207,10 @@ def send_shipping_status_email_task(self, job_id, order_id, new_status, user_id=
 
     # Generate email HTML
     email_html = get_shipping_status_update_html(
-        order_id=order.id,
+        order_id=order_id_display or order.order_id,
         user_first_name=order.user.first_name,
         new_status=new_status,
-        tracking_number=tracking_number
+        fulfillment=fulfillment
     )
 
     # Send email (retryable block)

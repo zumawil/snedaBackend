@@ -391,22 +391,13 @@ class AdminUpdateOrderStatusView(APIView):
         serializer.is_valid(raise_exception=True) # automatically checks and raises error
         new_status = serializer.validated_data["status"]
 
-        if not hasattr(order, "shipping") or not order.shipping:
+        if not order.approved:
             return api_response(
                 success=False,
-                error="No shipping record",
-                message="No shipping related to this order was found",
+                error="Order is not approved",
+                message="Order cannot be updated as it is not approved",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
-        shipping = order.shipping
-        shipping.status = new_status
-
-        tracking_number = request.data.get("tracking_number")
-        if tracking_number:
-            shipping.tracking_number = tracking_number
-
-        shipping.save()
 
         # 1. Create the tracking record in 'pending' state
         job = BackgroundJob.objects.create(
@@ -418,7 +409,14 @@ class AdminUpdateOrderStatusView(APIView):
 
         # 2. Queue the Celery task safely
         def dispatch_task():
-            result = send_shipping_status_email_task.delay(job.id, order.id, new_status, request.user.id, tracking_number)
+            result = send_shipping_status_email_task.delay(
+                job.id,
+                order.id, 
+                new_status, 
+                request.user.id, 
+                order.order_id,
+                order.fulfillment,
+            )
             # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
@@ -429,7 +427,7 @@ class AdminUpdateOrderStatusView(APIView):
 
         return api_response(
             success=True,
-            data=serializer.data,
+            data={"job_id": job.id, 'data': serializer.data},
             message=f"Order status updated to {new_status}",
             status_code=status.HTTP_200_OK
         )     
@@ -568,6 +566,7 @@ class AdminOrderRejectView(APIView):
 
         return api_response(
             success=True,
+            data={"job_id": job.id},
             message="Order rejected successfully",
             status_code=status.HTTP_200_OK
         )
@@ -644,6 +643,7 @@ class AdminOrderCancelView(APIView):
 
         return api_response(
             success=True,
+            data={"job_id": job.id},
             message="Order cancelled successfully and stock restored",
             status_code=status.HTTP_200_OK
         )

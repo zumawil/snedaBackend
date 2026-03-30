@@ -1,3 +1,4 @@
+from celery import shared_task
 import logging
 from datetime import timedelta
 from django.utils import timezone
@@ -9,6 +10,7 @@ from services.checkout_service import CheckoutService
 
 logger = logging.getLogger(__name__)
 
+@shared_task
 def cancel_unpaid_orders():
     timeout = timezone.now() - timedelta(minutes=30)
     
@@ -31,4 +33,5 @@ def cancel_unpaid_orders():
         count += 1
         
     if count > 0:
-        logger.info(f"Cleanup Task: Cancelled and restored stock for {count} abandoned orders.")
+        logger.info(f"Cleanup Task: Cancelled and restored stock for {count} abandoned orders.")
+    return f"Cleanup Task: Cancelled {count} orders."
