@@ -288,89 +288,89 @@ SWAGGER_SETTINGS = {
 # Create a "logs" directory inside your project root if it doesn't exist
 
 
-# LOG_DIR = Path(BASE_DIR, "logs")
-# LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR = Path(BASE_DIR, "logs")
+LOG_DIR.mkdir(exist_ok=True)
 
-# LOGGING = {
-#     "version": 1,
-#     # Allow Django’s default loggers to still work
-#     "disable_existing_loggers": False,
+LOGGING = {
+    "version": 1,
+    # Allow Django’s default loggers to still work
+    "disable_existing_loggers": False,
 
-#     # -----------------------------
-#     #  FORMATTERS
-#     #  How logs will look
-#     # -----------------------------
-#     "formatters": {
-#         # Detailed log output (recommended for saving to files)
-#         "verbose": {
-#             "format": "[{asctime}] [{levelname}] {name} - {message}",
-#             "style": "{",
-#         },
-#         # Short logs (used for console)
-#         "simple": {
-#             "format": "{levelname}: {message}",
-#             "style": "{",
-#         },
-#     },
+    # -----------------------------
+    #  FORMATTERS
+    #  How logs will look
+    # -----------------------------
+    "formatters": {
+        # Detailed log output (recommended for saving to files)
+        "verbose": {
+            "format": "[{asctime}] [{levelname}] {name} - {message}",
+            "style": "{",
+        },
+        # Short logs (used for console)
+        "simple": {
+            "format": "{levelname}: {message}",
+            "style": "{",
+        },
+    },
 
-#     # -----------------------------
-#     #  HANDLERS
-#     #  Where logs are written to
-#     # -----------------------------
-#     "handlers": {
-#         # Log only ERROR & above to errors.log (server crashes, unhandled exceptions)
-#         "file_error": {
-#             "class": "logging.handlers.RotatingFileHandler",
-#             "filename": os.path.join(LOG_DIR, "errors.log"),
-#             "maxBytes": 1024 * 1024 * 5,  # Limit log file to 5MB
-#             "backupCount": 5,  # Keep 5 backup log files
-#             "formatter": "verbose",
-#             "level": "ERROR",
-#         },
+    # -----------------------------
+    #  HANDLERS
+    #  Where logs are written to
+    # -----------------------------
+    "handlers": {
+        # Log only ERROR & above to errors.log (server crashes, unhandled exceptions)
+        "file_error": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": os.path.join(LOG_DIR, "errors.log"),
+            "maxBytes": 1024 * 1024 * 5,  # Limit log file to 5MB
+            "backupCount": 5,  # Keep 5 backup log files
+            "formatter": "verbose",
+            "level": "ERROR",
+        },
 
-#         # Log WARNING & above to warnings.log (throttling, validation issues, etc.)
-#         "file_warning": {
-#             "class": "logging.handlers.RotatingFileHandler",
-#             "filename": os.path.join(LOG_DIR, "warnings.log"),
-#             "maxBytes": 1024 * 1024 * 3,  # 3MB max size
-#             "backupCount": 3,
-#             "formatter": "verbose",
-#             "level": "WARNING",
-#         },
+        # Log WARNING & above to warnings.log (throttling, validation issues, etc.)
+        "file_warning": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": os.path.join(LOG_DIR, "warnings.log"),
+            "maxBytes": 1024 * 1024 * 3,  # 3MB max size
+            "backupCount": 3,
+            "formatter": "verbose",
+            "level": "WARNING",
+        },
 
-#         # Logs to the terminal console (for debugging during development)
-#         "console": {
-#             "class": "logging.StreamHandler",
-#             "formatter": "simple",
-#         },
-#     },
+        # Logs to the terminal console (for debugging during development)
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
 
-#     # -----------------------------
-#     #  LOGGERS
-#     #  Which parts of Django/DRF generate logs
-#     # -----------------------------
-#     "loggers": {
-#         # Django general logs (warnings, errors, anything internal)
-#         "django": {
-#             "handlers": ["file_error", "file_warning"],  # Save warnings & errors to files
-#             "propagate": True,  # Allow logs to bubble up
-#         },
+    # -----------------------------
+    #  LOGGERS
+    #  Which parts of Django/DRF generate logs
+    # -----------------------------
+    "loggers": {
+        # Django general logs (warnings, errors, anything internal)
+        "django": {
+            "handlers": ["file_error", "file_warning"],  # Save warnings & errors to files
+            "propagate": True,  # Allow logs to bubble up
+        },
 
-#         # Logs for 500 errors coming from views, middleware, etc.
-#         "django.request": {
-#             "handlers": ["file_error"],  # Only log errors
-#             "level": "ERROR",
-#             "propagate": False,
-#         },
+        # Logs for 500 errors coming from views, middleware, etc.
+        "django.request": {
+            "handlers": ["file_error"],  # Only log errors
+            "level": "ERROR",
+            "propagate": False,
+        },
 
-#         # DRF-specific logs (throttling, parsing issues, schema warnings)
-#         "rest_framework": {
-#             "handlers": ["file_warning"],  # Only warnings
-#             "level": "WARNING",
-#             "propagate": False,
-#         },
-#     },
-# }
+        # DRF-specific logs (throttling, parsing issues, schema warnings)
+        "rest_framework": {
+            "handlers": ["file_warning"],  # Only warnings
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
 
 # to watch live logs
 # run this in a separate terminal: tail -f logs/errors.log for linux
