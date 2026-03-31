@@ -1,38 +1,91 @@
-from django.db import models
-from orders.models import Order, PickupLocation
-# from payments.models import Payment
+# In your shipping app models.py
 
-# once payment is successful shipping is created
+from django.db import models
+from django.core.exceptions import ValidationError
+from orders.models import Order, PickupLocation
+from users.models import CustomUser as User
+from django.utils import timezone
+
 class Shipping(models.Model):
     order = models.OneToOneField(
         Order,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="shipping"
+        on_delete=models.CASCADE,
+        related_name="shipping",
+        null=True
     )
     status = models.CharField(
         max_length=50,
         choices=[
             ("pending", "Pending"),
-            ("shipped", "Shipped"),
-            ("delivered", "Delivered"),
+            ("approved", "Approved"),
+            ("picked", "Picked"),              # Admin picked/prepared
+            ("shipped", "Shipped"),            # In transit
+            ("delivered", "Delivered"),        # CLOSED state
             ('cancelled', 'Cancelled'),
-            ('approved', 'Approved'),
-            ('fulfilled', 'Fulfilled')
         ],
         default="pending"
     )
     tracking_number = models.CharField(max_length=100, blank=True, null=True)
-    # address the product is shipping to
-    address = models.TextField(blank=True, null=True)
+    address = models.TextField(null=True)  # Required for delivery
+    
+    # Tracking fields
+    picked_at = models.DateTimeField(null=True, blank=True)
+    picked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='picked_shipments'
+    )
+    
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    delivered_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='delivered_shipments'
+    )
+    
     date_created = models.DateTimeField(auto_now_add=True)
-    # pickup option 
-    pickup = models.BooleanField(default=False)
-    pickup_location = models.CharField(max_length=255, choices=PickupLocation.choices, null=True, blank=True)
-
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Shipping for Order #{self.order.id if self.order else 'N/A'} - {self.status}"
+        return f"Shipping for Order {self.order.order_id} - {self.status}"
 
+    def clean(self):
+        """Ensure order is NOT marked as pickup"""
+        if self.order and self.order.is_pickup:
+            raise ValidationError("Cannot create shipping for pickup orders (is_pickup=True)")
+        
+        # Ensure no pickup fulfillment exists for this order
+        if self.order and hasattr(self.order, 'pickup_fulfillment'):
+            raise ValidationError("Order already has pickup record. Cannot have both pickup and shipping.")
+        
+        # Ensure address is provided
+        if not self.address:
+            raise ValidationError("Shipping address is required for delivery orders")
 
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def mark_as_picked(self, admin_user):
+        """Admin marks order as picked"""
+        if self.status not in ['pending', 'approved']:
+            raise ValidationError(f"Cannot mark as picked. Current status: {self.status}")
+        
+        self.status = 'picked'
+        self.picked_at = timezone.now()
+        self.picked_by = admin_user
+        self.save(update_fields=['status', 'picked_at', 'picked_by', 'updated_at'])
+
+    def mark_as_delivered(self, admin_user):
+        """Admin marks order as delivered"""
+        if self.status != 'shipped':
+            raise ValidationError(f"Order must be shipped before delivery. Current status: {self.status}")
+        
+        self.status = 'delivered'
+        self.delivered_at = timezone.now()
+        self.delivered_by = admin_user
+        self.save(update_fields=['status', 'delivered_at', 'delivered_by', 'updated_at'])

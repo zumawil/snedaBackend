@@ -12,7 +12,6 @@ class FulfillmentService:
         """
         logger.info(f"Fulfillment started for Order {order.order_id}")
         
-        # 🚀 Try to create shipping
         try:
             shipping = ShippingService.create_shipping_from_order(order)
             if shipping:

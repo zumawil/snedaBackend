@@ -7,6 +7,7 @@ from utils.paymentConstants import PaymentStatus
 from payments.models import Payment
 from django.db.models import Exists, OuterRef
 from services.checkout_service import CheckoutService
+from utils.paymentConstants import Status as OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ def cancel_unpaid_orders():
     
     unpaid_orders = Order.objects.filter(
         created_at__lt=timeout,
-        status=Order.Status.PENDING
+        status=OrderStatus.PENDING
     ).exclude(
         Exists(has_successful_payment)
     )

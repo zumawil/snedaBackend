@@ -14,7 +14,7 @@ from utils.payment_helpers import bill_user, verify_transaction_status
 from utils.apiResponse import api_response
 from rest_framework import status
 from orders.models import Order, OrderItem, Reservation
-import utils.paymentConstants
+from utils.paymentConstants import Status as OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,10 @@ class CheckoutService:
             }
 
     @staticmethod
-    def _create_order_and_reserve_stock(user, idempotency_key, address, pickup, pickup_location=None):
+    def _create_order_and_reserve_stock(user, 
+                                        idempotency_key, 
+                                        address, pickup, 
+                                        pickup_location=None):
         """
         Phase 1: Atomically check idempotency, create order, and reserve stock.
             Returns: (order, amount) tuple or response dict if order already exists
@@ -275,14 +278,14 @@ class CheckoutService:
             # Create order with shipping intent and initial status
             order = Order.objects.create(
                 user=user,
-                status=Order.Status.PENDING,
-                shipping_address=address if not pickup else None,
+                status=OrderStatus.PENDING,
                 is_pickup=pickup,
-                pickup_location=pickup_location if pickup else None
             )
         
             # Link order to checkout attempt for idempotency
             attempt.order = order
+            attempt.address = address
+            attempt.pickup_location = pickup_location
             attempt.save()
 
             # Reserve stock atomically for each item

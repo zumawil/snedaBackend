@@ -1,4 +1,5 @@
 from django.db import models, transaction
+from django.core.exceptions import ValidationError
 from products.models import Product
 from users.models import CustomUser as User
 from django.utils import timezone
@@ -9,6 +10,7 @@ import string
 import logging
 
 logger = logging.getLogger(__name__)
+from utils.paymentConstants import Status
 
 class PickupLocation(models.TextChoices):
     NIA = 'NIA', 'National Information Agency'
@@ -23,39 +25,48 @@ class PickupLocation(models.TextChoices):
             cls.OSU: 'Oxford Street, Osu, Accra'
         }
         return mapping.get(key, 'Unknown Branch')
-   
 
-# Create your models here.
 class Order(models.Model):
-    class Status(models.TextChoices):
-        PENDING = 'pending', 'Pending'
-        PAID = 'paid', 'Paid'
-        FULFILLED = 'fulfilled', 'Fulfilled'
-        DELIVERED = 'delivered', 'Delivered'
-        CANCELLED = 'cancelled', 'Cancelled'
-        REFUNDED = 'refunded', 'Refunded'
+    
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     order_id = models.CharField(max_length=30, unique=True, editable=False, null=True, blank=True)
     total_amount = models.DecimalField(default=0, max_digits=10, decimal_places=2)
-    created_at = models.DateTimeField(auto_now_add=True) 
-
-    approved = models.BooleanField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     
-    # New fields for post-payment shipping
+    # System-controlled status (payment/business state only)
     status = models.CharField(
         max_length=20, 
         choices=Status.choices, 
         default=Status.PENDING
     )
-    shipping_address = models.TextField(null=True, blank=True)
+    
+    # Fulfillment type indicator ONLY
     is_pickup = models.BooleanField(default=False)
-    pickup_location = models.CharField(max_length=255, choices=PickupLocation.choices, null=True, blank=True)
-    # to alert admins to review the order   
+    
+    # Alert admins to review the order
     marked_for_review = models.BooleanField(default=False)
+    approved = models.BooleanField(null=True)
 
     def __str__(self):
         return f"order {self.order_id} for {self.user.email}"
+
+    def clean(self):
+        """Enforce: order must have EITHER pickup OR shipping, not both, not neither"""
+        has_pickup = hasattr(self, 'pickup_fulfillment')
+        has_shipping = hasattr(self, 'shipping')
+        
+        if self.pk:  # Only validate for existing orders
+            if self.is_pickup and has_shipping:
+                raise ValidationError("Pickup orders cannot have shipping records")
+            
+            if not self.is_pickup and has_pickup:
+                raise ValidationError("Delivery orders cannot have pickup records")
+
+    def save(self, *args, **kwargs):
+        if not self.order_id:
+            self.order_id = self.generate_unique_order_id()
+        super().save(*args, **kwargs)
 
     def get_payment(self):
         return self.payments.first()
@@ -63,47 +74,90 @@ class Order(models.Model):
     @property
     def effective_status(self):
         """
-        Derive an effective order status.
-        Priority:
-        1. If Shipping exists, its status determines the order's progress in fulfillment.
-        2. Otherwise, use the Order.status field.
+        User-facing status that shows current fulfillment state.
         """
-        shipping = getattr(self, 'shipping', None)
-        if shipping:
-            if shipping.status == 'cancelled':
-                return self.Status.CANCELLED
-            if shipping.status == 'delivered':
-                return self.Status.DELIVERED
-            if shipping.status == 'shipped':
-                return self.Status.FULFILLED # Or a custom 'SHIPPED' status if added
-            return self.Status.PAID # If shipping is pending, the order is at least PAID
+        # Delivery orders - Shipping.status is the source of truth
+        if hasattr(self, 'shipping') and self.shipping:
+            return self.shipping.status
         
+        # Pickup orders - PickupFulfillment.status is the source of truth
+        if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+            return self.pickup_fulfillment.status
+        
+        # Fallback to system status
         return self.status
 
+    @property
+    def is_closed(self):
+        """Check if order is in a closed/completed state"""
+        if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+            return self.pickup_fulfillment.status == 'completed'
+        elif hasattr(self, 'shipping') and self.shipping:
+            return self.shipping.status == 'delivered'
+        return False
+
+    @property
+    def fulfillment_type(self):
+        return 'pickup' if self.is_pickup else 'delivery'
+
+    @property
+    def fulfillment_display_address(self):
+        """Get the display address for this order"""
+        if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+            return self.pickup_fulfillment.get_display_address()
+        elif hasattr(self, 'shipping') and self.shipping:
+            return self.shipping.address
+        return 'No address provided'
+
+    @property
+    def fulfillment(self):
+        """Get fulfillment details"""
+        if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+            return {
+                "type": "pickup",
+                "status": self.pickup_fulfillment.status,
+                "location": self.pickup_fulfillment.location,
+                "display_address": self.pickup_fulfillment.get_display_address(),
+                "is_closed": self.is_closed
+            }
+        elif hasattr(self, 'shipping') and self.shipping:
+            return {
+                "type": "delivery",
+                "status": self.shipping.status,
+                "address": self.shipping.address,
+                "tracking_number": self.shipping.tracking_number,
+                "is_closed": self.is_closed
+            }
+        return {"type": "unknown", "status": self.status}
+
     def restore_stock(self, trigger_refund=True):
-        """
-        Restores stock for a cancelled order and optionally triggers a refund.
-        1. Cancels all active reservations.
-        2. If order was already PAID/FULFILLED, we might need to increment inventory_qty
-           (assuming inventory_qty was deducted during payment confirmation).
-        """
+        """Restores stock for a cancelled order and optionally triggers a refund."""
         with transaction.atomic():
             # 1. Cancel active reservations
             active_reservations = self.reservations.filter(status=Reservation.Status.ACTIVE)
             active_reservations.update(status=Reservation.Status.CANCELLED)
 
-            # 2. If stock was already deducted (Order was PAID or FULFILLED)
-            # We ONLY restore if the items haven't been physically shipped or delivered.
-            shipping = getattr(self, 'shipping', None)
+            # 2. Check if we can restore physical stock
             can_restore_physical = True
-            if shipping and shipping.status in ['shipped', 'delivered']:
-                can_restore_physical = False
-                logger.warning(
-                    f"Order {self.order_id} cancellation: Stock NOT restored because "
-                    f"shipping status is '{shipping.status}'."
-                )
+            
+            # Check delivery orders
+            if hasattr(self, 'shipping') and self.shipping:
+                if self.shipping.status in ['shipped', 'delivered']:
+                    can_restore_physical = False
+                    logger.warning(
+                        f"Order {self.order_id}: Stock NOT restored - shipping status is '{self.shipping.status}'"
+                    )
+            
+            # Check pickup orders
+            if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+                if self.pickup_fulfillment.status == 'completed':
+                    can_restore_physical = False
+                    logger.warning(
+                        f"Order {self.order_id}: Stock NOT restored - pickup is completed"
+                    )
 
-            if can_restore_physical and self.status in [self.Status.PAID, self.Status.FULFILLED]:
+            # Restore stock if applicable
+            if can_restore_physical and self.status == self.Status.PAID:
                 confirmed_reservations = self.reservations.filter(status=Reservation.Status.CONFIRMED)
                 for res in confirmed_reservations:
                     Product.objects.filter(pk=res.product.pk).update(
@@ -112,44 +166,38 @@ class Order(models.Model):
                     res.status = Reservation.Status.CANCELLED
                     res.save()
             
+            # Handle refund
             new_status = self.Status.CANCELLED
-            if trigger_refund and self.status in [self.Status.PAID, self.Status.FULFILLED]:
+            if trigger_refund and self.status == self.Status.PAID:
                 from utils.payment_helpers import initiate_paystack_refund
                 payment = self.payments.filter(status='success', is_processed=True).first()
                 if payment and payment.paystack_reference:
                     success, message = initiate_paystack_refund(payment.paystack_reference, payment.amount)
                     if success:
                         new_status = self.Status.REFUNDED
-                        logger.info(f"Refund successfully issued for order {self.order_id}")
+                        logger.info(f"Refund issued for order {self.order_id}")
                     else:
                         logger.error(f"Refund failed for order {self.order_id}: {message}")
             
-            # 3. Cancel shipping if it exists
-            if shipping:
-                shipping.status = 'cancelled'
-                shipping.save(update_fields=['status'])
+            # Cancel fulfillment records
+            if hasattr(self, 'shipping') and self.shipping:
+                self.shipping.status = 'cancelled'
+                self.shipping.save(update_fields=['status'])
+            
+            if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+                self.pickup_fulfillment.status = 'cancelled'
+                self.pickup_fulfillment.save(update_fields=['status'])
             
             self.status = new_status
             self.save()
             
-            logger.info(f"Stock restored and order {self.order_id} set to {new_status}.")
-
-    def get_fulfillment_status(self):
-        return 'pickup' if self.is_pickup else 'delivery'
-
-    @property
-    def fulfillment_display_address(self):
-        if self.is_pickup and self.pickup_location:
-            return PickupLocation.get_address(self.pickup_location)
-        return self.shipping_address or 'No address provided'
-
-    @property
-    def fulfillment_type(self):
-        return 'pickup' if self.is_pickup else 'delivery'
+            logger.info(f"Order {self.order_id} set to {new_status}")
 
     def is_cancellable(self):
-        """Return True if the order is in a state that allows cancellation."""
-        return self.status == self.Status.PENDING
+        """Return True if order can be cancelled"""
+        if self.is_closed:
+            return False
+        return self.status in [self.Status.PENDING, self.Status.PAID]
 
     def generate_unique_order_id(self):
         date_str = timezone.now().strftime("%Y%m%d")
@@ -159,25 +207,10 @@ class Order(models.Model):
             if not Order.objects.filter(order_id=new_id).exists():
                 return new_id
 
-    @property
-    def fulfillment(self):
-        return {
-            "type": self.fulfillment_type,
-            "is_pickup": self.is_pickup,
-            "pickup_location": self.pickup_location,
-            "display_address": self.fulfillment_display_address
-        }
-
-    def save(self, *args, **kwargs):
-        if not self.order_id:
-            self.order_id = self.generate_unique_order_id()
-        super().save(*args, **kwargs)
-
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='order_items')
     quantity = models.IntegerField()
-    # unit price
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
     def get_total_price(self):
@@ -185,7 +218,6 @@ class OrderItem(models.Model):
     
     def __str__(self):
         return f"order item for {self.order}"
-
 
 def get_default_expiry():
     return timezone.now() + timedelta(minutes=15)
@@ -195,7 +227,7 @@ class Reservation(models.Model):
     class Status(models.TextChoices):
         ACTIVE    = 'active',    'Active'
         EXPIRED   = 'expired',   'Expired'
-        CONFIRMED = 'confirmed', 'Confirmed'
+        CONFIRMED = 'confirmed', 'Confirmed' # reservation is made available to user
         CANCELLED = 'cancelled', 'Cancelled'
     
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -207,10 +239,100 @@ class Reservation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('order', 'product')  # one reservation per product per orderd   
+        unique_together = ('order', 'product')
         
     def is_expired(self):
         return timezone.now() > self.expires_at
 
     def __str__(self):
         return f"Reservation {self.id} - {self.product} x{self.quantity} [{self.status}]"
+
+# In orders/models.py (add this)
+
+class PickupFulfillment(models.Model):
+    """Separate model for pickup order fulfillment data"""
+    
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        READY = 'ready', 'Ready for Pickup'       # Admin marked as picked
+        COMPLETED = 'completed', 'Completed'      # Customer collected (CLOSED)
+        CANCELLED = 'cancelled', 'Cancelled'
+    
+    order = models.OneToOneField(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='pickup_fulfillment'
+    )
+    location = models.CharField(
+        max_length=255,
+        choices=PickupLocation.choices
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING
+    )
+    
+    # Tracking fields
+    picked_at = models.DateTimeField(null=True, blank=True)
+    picked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='picked_orders'
+    )
+    
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='completed_pickup_orders'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Pickup for Order {self.order.order_id} at {self.location} - {self.status}"
+
+    def clean(self):
+        """Ensure order is marked as pickup"""
+        if self.order and not self.order.is_pickup:
+            raise ValidationError("Can only create PickupFulfillment for pickup orders (is_pickup=True)")
+        
+        # Ensure no shipping exists for this order
+        if self.order and hasattr(self.order, 'shipping'):
+            raise ValidationError("Order already has shipping record. Cannot have both pickup and shipping.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def get_display_address(self):
+        """Get human-readable address for this pickup location"""
+        return PickupLocation.get_address(self.location)
+
+    def mark_as_ready(self, admin_user):
+        """Admin marks order as picked and ready for customer pickup"""
+        if self.status != self.Status.PENDING:
+            raise ValidationError(f"Cannot mark as ready. Current status: {self.status}")
+        
+        self.status = self.Status.READY
+        self.picked_at = timezone.now()
+        self.picked_by = admin_user
+        self.save(update_fields=['status', 'picked_at', 'picked_by', 'updated_at'])
+        logger.info(f"Pickup order {self.order.order_id} marked as ready by {admin_user.email}")
+
+    def mark_as_completed(self, admin_user):
+        """Admin marks order as completed (customer collected)"""
+        if self.status != self.Status.READY:
+            raise ValidationError(f"Order must be ready before completing. Current status: {self.status}")
+        
+        self.status = self.Status.COMPLETED
+        self.completed_at = timezone.now()
+        self.completed_by = admin_user
+        self.save(update_fields=['status', 'completed_at', 'completed_by', 'updated_at'])
+        logger.info(f"Pickup order {self.order.order_id} completed by {admin_user.email}")

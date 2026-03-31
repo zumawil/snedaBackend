@@ -40,4 +40,7 @@ class CheckoutAttempt(models.Model):
                         null=True, 
                         blank=True
                     )
+    # Store fulfillment data for post-payment processing
+    address = models.TextField(null=True, blank=True)  # Delivery address
+    pickup_location = models.CharField(max_length=255, null=True, blank=True)  # Pickup location choice
     created_at = models.DateTimeField(auto_now_add=True)

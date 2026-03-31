@@ -1,3 +1,5 @@
+from django.db import models
+
 class PaymentStatus:
     
     ABANDONED = "abandoned"
@@ -14,8 +16,8 @@ class PaymentMethod:
     QR = "qr"
     BANK_TRANSFER = "bank_transfer"
 
-class OrderStatus:
-    PENDING = "pending"
-    SHIPPED = "shipped"
-    DELIVERED = "delivered"
-    CANCELLED = "cancelled"
+class Status(models.TextChoices):
+    PENDING = 'pending', 'Pending'         # System: cart created
+    PAID = 'paid', 'Paid'                  # System: payment confirmed
+    CANCELLED = 'cancelled', 'Cancelled'   # System/Business logic
+    REFUNDED = 'refunded', 'Refunded'      # System: refund processed

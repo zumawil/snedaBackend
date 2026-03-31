@@ -176,16 +176,19 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
     fulfillment_section = ""
     if fulfillment:
         f_type = fulfillment.get('type', 'delivery').capitalize()
-        f_location = fulfillment.get('pickup_location', 'N/A')
-        f_address = fulfillment.get('display_address', 'N/A')
+        f_location = fulfillment.get('location', 'N/A')  # For pickup orders
+        f_address = fulfillment.get('display_address', 'N/A')  # Common for both
+        f_tracking = fulfillment.get('tracking_number', '')  # For delivery orders
+        is_pickup = fulfillment.get('type') == 'pickup'
         
         fulfillment_section = f"""
                 <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; margin-top: 16px; border: 1px solid #e5e7eb;">
                     <h3 style="margin-top: 0; color: #1f2937; font-size: 16px;">Fulfillment Details</h3>
                     <ul style="list-style-type: none; padding: 0; margin: 0; color: #4b5563; font-size: 14px;">
                         <li style="margin-bottom: 8px;"><b>Method:</b> {f_type}</li>
-                        {f'<li style="margin-bottom: 8px;"><b>Pickup Location:</b> {f_location}</li>' if fulfillment.get('is_pickup') else ''}
-                        <li><b>Address:</b> {f_address}</li>
+                        {f'<li style="margin-bottom: 8px;"><b>Pickup Location:</b> {f_location}</li>' if is_pickup else ''}
+                        <li style="margin-bottom: 8px;"><b>Address:</b> {f_address}</li>
+                        {f'<li><b>Tracking Number:</b> {f_tracking}</li>' if f_tracking else ''}
                     </ul>
                 </div>
         """

@@ -115,7 +115,12 @@ class DashboardStatsView(APIView):
             total_revenue = Payment.objects.filter(status='success', date_created__date=today).aggregate(Sum('amount'))['amount__sum'] or 0
             orders_today = Order.objects.filter(created_at__date=today).count()
             total_orders = Order.objects.count()
-            total_pending_orders = Order.objects.filter(Q(shipping__status='pending') | Q(shipping__isnull=True)).count()
+            # Count pending orders (delivery with pending shipping OR pickup with pending fulfillment OR no fulfillment yet)
+            total_pending_orders = Order.objects.filter(
+                Q(shipping__status='pending') | 
+                Q(pickup_fulfillment__status='pending') |
+                Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+            ).count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
 
@@ -294,9 +299,18 @@ class AdminOrderListView(APIView):
             
             if order_status:
                 if order_status == 'pending':
-                    orders = orders.filter(Q(shipping__status='pending') | Q(shipping__isnull=True))
+                    # Pending: delivery orders with pending shipping OR pickup orders with pending fulfillment OR no fulfillment yet
+                    orders = orders.filter(
+                        Q(shipping__status='pending') | 
+                        Q(pickup_fulfillment__status='pending') |
+                        Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                    )
                 else:
-                    orders = orders.filter(shipping__status=order_status)
+                    # For other statuses, check both shipping and pickup fulfillment
+                    orders = orders.filter(
+                        Q(shipping__status=order_status) | 
+                        Q(pickup_fulfillment__status=order_status)
+                    )
                     
             if search_query:
                 conditions = Q(user__email__icontains=search_query) | Q(user__first_name__icontains=search_query) | Q(user__last_name__icontains=search_query)
