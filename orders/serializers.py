@@ -210,12 +210,7 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 class OrderStatusUpdateSerializer(serializers.Serializer):
     """Serializer for updating order status"""
     status = serializers.ChoiceField(
-        choices=[
-            OrderStatus.PENDING,
-            OrderStatus.PAID,
-            OrderStatus.CANCELLED,
-            OrderStatus.REFUNDED
-        ],
+        choices=OrderStatus.choices,
         help_text="New order status"
     )
 
@@ -226,3 +221,4 @@ class OrderCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['is_pickup', 'approved']
+        read_only_fields = ['approved']

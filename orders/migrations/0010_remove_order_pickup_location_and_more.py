@@ -5,6 +5,17 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def update_order_statuses(apps, schema_editor):
+    Order = apps.get_model('orders', 'Order')
+    # Update 'fulfilled' and 'delivered' to 'pending' (or another valid choice)
+    # as these are being removed from the choices in this migration.
+    Order.objects.filter(status__in=['fulfilled', 'delivered']).update(status='pending')
+
+def reverse_order_statuses(apps, schema_editor):
+    # This is a no-op as we don't know which orders were fulfilled vs delivered.
+    # But usually we provide it to make the migration reversible.
+    pass
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -13,6 +24,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(update_order_statuses, reverse_code=reverse_order_statuses),
         migrations.RemoveField(
             model_name='order',
             name='pickup_location',

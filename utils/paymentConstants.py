@@ -21,3 +21,4 @@ class Status(models.TextChoices):
     PAID = 'paid', 'Paid'                  # System: payment confirmed
     CANCELLED = 'cancelled', 'Cancelled'   # System/Business logic
     REFUNDED = 'refunded', 'Refunded'      # System: refund processed
+    CANCELLATION_PENDING = 'cancellation_pending', 'Cancellation Pending' # Refund failed, review needed

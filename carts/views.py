@@ -257,7 +257,7 @@ class CheckoutView(APIView):
             
         address = request.data.get('address')
         pickup = str(request.data.get('pickup', '')).lower() == 'true'
-        pickup_location = request.data.get('pickup_location') # Frontend sends pickup_name as requested
+        pickup_location = request.data.get('pickup_location') # Frontend sends pickup_location as requested
 
         result = CheckoutService.process_checkout(user, idempotency_key, address, pickup, pickup_location)
 

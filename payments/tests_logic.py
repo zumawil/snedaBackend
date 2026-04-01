@@ -8,7 +8,7 @@ from orders.models import Order, Reservation, OrderItem
 from products.models import Product
 from payments.models import Payment
 from payments.webhook_handlers import handle_payment_success
-from utils.paymentConstants import PaymentStatus
+from utils.paymentConstants import PaymentStatus, Status
 
 class PaymentLogicTest(TransactionTestCase):
     def setUp(self):
@@ -39,7 +39,7 @@ class PaymentLogicTest(TransactionTestCase):
         self.order = Order.objects.create(
             user=self.user,
             total_amount=Decimal("100.00"),
-            status=Order.Status.PENDING
+            status=Status.PENDING
         )
         
         # Create a reservation
@@ -75,7 +75,7 @@ class PaymentLogicTest(TransactionTestCase):
         
         assert self.product.inventory_qty == 8
         assert self.reservation.status == Reservation.Status.CONFIRMED
-        assert self.order.status == Order.Status.PAID
+        assert self.order.status == Status.PAID
         assert payment.is_processed is True
 
     @patch('services.fulfillment_service.FulfillmentService.handle_post_payment')
@@ -132,8 +132,8 @@ class PaymentLogicTest(TransactionTestCase):
         
         # Order should be marked for review
         self.order.refresh_from_db()
-        assert self.order.marked_for_review == True
-        assert self.order.status == Order.Status.PAID
+        assert self.order.marked_for_review
+        assert self.order.status == Status.PAID
 
     @patch('services.fulfillment_service.FulfillmentService.handle_post_payment')
     @patch('payments.tasks.send_confirmation_email_task.delay')
@@ -182,7 +182,7 @@ class PaymentLogicTest(TransactionTestCase):
     def test_restore_stock_cancelled_order(self):
         """Test restore_stock() increments inventory_qty if previously PAID."""
         # Simulate a PAID order with confirmed stock
-        self.order.status = Order.Status.PAID
+        self.order.status = Status.PAID
         self.order.save()
         self.reservation.status = Reservation.Status.CONFIRMED
         self.product.inventory_qty = 8
@@ -193,14 +193,14 @@ class PaymentLogicTest(TransactionTestCase):
         
         self.product.refresh_from_db()
         assert self.product.inventory_qty == 10
-        assert self.order.status == Order.Status.CANCELLED
+        assert self.order.status == Status.CANCELLED
 
     def test_restore_stock_already_shipped(self):
         """Verify we DON'T restore stock if it's already shipped."""
         from shipping.models import Shipping
         shipping = Shipping.objects.create(order=self.order, status='shipped')
         
-        self.order.status = Order.Status.PAID
+        self.order.status = Status.PAID
         self.order.save()
         self.reservation.status = Reservation.Status.CONFIRMED
         self.product.inventory_qty = 8
@@ -212,7 +212,7 @@ class PaymentLogicTest(TransactionTestCase):
         self.product.refresh_from_db()
         # Stock stays 8 because it's shipped!
         assert self.product.inventory_qty == 8
-        assert self.order.status == Order.Status.CANCELLED
+        assert self.order.status == Status.CANCELLED
         assert shipping.status == 'cancelled'
 
     @patch('utils.payment_helpers.initiate_paystack_refund')
@@ -220,7 +220,7 @@ class PaymentLogicTest(TransactionTestCase):
         """Verify cancelling a PAID order triggers external refund and sets status to REFUNDED."""
         mock_refund.return_value = (True, "Refund processed successfully")
         
-        self.order.status = Order.Status.PAID
+        self.order.status = Status.PAID
         self.order.save()
         self.reservation.status = Reservation.Status.CONFIRMED
         self.product.inventory_qty = 8
@@ -240,7 +240,7 @@ class PaymentLogicTest(TransactionTestCase):
         self.order.refresh_from_db()
         self.product.refresh_from_db()
         
-        assert self.order.status == Order.Status.REFUNDED
+        assert self.order.status == Status.REFUNDED
         assert self.product.inventory_qty == 10
         mock_refund.assert_called_once_with("REF-TO-REFUND", Decimal("100.00"))
 
@@ -251,7 +251,7 @@ class PaymentLogicTest(TransactionTestCase):
         # Old abandoned order
         abandoned_order = Order.objects.create(
             user=self.user, 
-            status=Order.Status.PENDING, 
+            status=Status.PENDING, 
             total_amount=Decimal("50.00")
         )
         # Manually force created_at using update to bypass auto_now_add
@@ -260,7 +260,7 @@ class PaymentLogicTest(TransactionTestCase):
         # Fresh pending order (should be ignored)
         fresh_order = Order.objects.create(
             user=self.user, 
-            status=Order.Status.PENDING, 
+            status=Status.PENDING, 
             total_amount=Decimal("50.00")
         )
         Order.objects.filter(id=fresh_order.id).update(created_at=timezone.now() - timedelta(minutes=10))
@@ -268,7 +268,7 @@ class PaymentLogicTest(TransactionTestCase):
         # Old paid order (should be ignored)
         paid_order = Order.objects.create(
             user=self.user, 
-            status=Order.Status.PAID, 
+            status=Status.PAID, 
             total_amount=Decimal("50.00")
         )
         Order.objects.filter(id=paid_order.id).update(created_at=timezone.now() - timedelta(minutes=40))
@@ -282,6 +282,6 @@ class PaymentLogicTest(TransactionTestCase):
         fresh_order.refresh_from_db()
         paid_order.refresh_from_db()
         
-        assert abandoned_order.status == Order.Status.CANCELLED
-        assert fresh_order.status == Order.Status.PENDING
-        assert paid_order.status == Order.Status.PAID
+        assert abandoned_order.status == Status.CANCELLED
+        assert fresh_order.status == Status.PENDING
+        assert paid_order.status == Status.PAID

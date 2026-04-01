@@ -1,6 +1,7 @@
 import logging
 from django.db import transaction
 from django.utils import timezone
+from datetime import timedelta
 from requests import Response
 from carts.models import Cart, CheckoutAttempt
 from orders.models import Order, OrderItem
@@ -139,7 +140,7 @@ class CheckoutService:
                                     'message': f'Sorry, {product.item_no} is now out of stock and cannot be retried.'
                                 }
                             reservation.status = Reservation.Status.ACTIVE
-                            reservation.expires_at = timezone.now() + timezone.timedelta(minutes=15)
+                            reservation.expires_at = timezone.now() + timedelta(minutes=15)
                             reservation.save()
                     else:
                         # New reservation created, check available stock
@@ -275,7 +276,7 @@ class CheckoutService:
             if not items:
                 raise Exception("Cart is empty. Please add items before checkout.")
 
-            # Create order with shipping intent and initial status
+            # Create order
             order = Order.objects.create(
                 user=user,
                 status=OrderStatus.PENDING,

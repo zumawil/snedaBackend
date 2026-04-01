@@ -71,10 +71,11 @@ class OrderView(APIView):
                     status_code=status.HTTP_200_OK
                 )
         except Exception as e:
+            logger.exception("Error retrieving orders: %s", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error retrieving orders",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
@@ -132,10 +133,11 @@ class OrderItemView(APIView):
                     status_code=status.HTTP_200_OK
                 )
         except Exception as e:
+            logger.exception("Error retrieving order items: %s", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error retrieving order items",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -219,10 +221,11 @@ class OrderItemView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
+            logger.exception("Error updating order item %s: %s", pk, e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error updating order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -250,10 +253,11 @@ class OrderItemView(APIView):
                 status_code=status.HTTP_204_NO_CONTENT
             )
         except Exception as e:
+            logger.exception("Error deleting order item %s: %s", pk, e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error deleting order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -318,11 +322,12 @@ class OrderCancelView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
         except Exception as e:
+            logger.exception("Error during order cancellation for order %s: %s", pk, e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
-                message="Error cancelling order",
+                error="Internal server error",
+                message="Unable to process cancellation or refund at this time",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
@@ -358,10 +363,11 @@ class OrderDetailView(APIView):
                 status_code=status.HTTP_200_OK
             )
         except Exception as e:
+            logger.exception("Error retrieving order details: %s", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error retrieving order details",
                 status_code=status.HTTP_400_BAD_REQUEST
             )

@@ -54,14 +54,18 @@ class Product(models.Model):
         return f"{self.item_no} - {self.category.name}"
     
     # return available stock considering active reservations
+    @property
     def available_stock(self):
         from orders.models import Reservation
-        reserved = self.reservations.filter(
+        from django.db.models import Sum
+        from django.utils import timezone
+        
+        total = self.reservations.filter(
             status=Reservation.Status.ACTIVE,
             expires_at__gt=timezone.now()
-        ).aggregate(total=models.Sum('quantity'))['total'] or 0
+        ).aggregate(total=Sum('quantity'))['total']
         
-        return self.inventory_qty - reserved
+        return self.inventory_qty - (total or 0)
 
     
 class ProductImage(models.Model):

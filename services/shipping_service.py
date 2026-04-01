@@ -1,5 +1,6 @@
 import logging
 from django.db import transaction
+from django.core.exceptions import ObjectDoesNotExist as RelatedObjectDoesNotExist
 from shipping.models import Shipping
 from shipping.generate_shipping_number import generate_tracking_number
 from orders.models import Order, PickupFulfillment
@@ -17,12 +18,22 @@ class ShippingService:
         Includes idempotency guard and standard status management.
         """
         # 1. Idempotency guard: check if fulfillment already exists
-        has_shipping = getattr(order, 'shipping', None) is not None
-        has_pickup = getattr(order, 'pickup_fulfillment', None) is not None
+        existing_shipping = None
+        existing_pickup = None
         
-        if has_shipping or has_pickup:
+        try:
+            existing_shipping = order.shipping
+        except RelatedObjectDoesNotExist:
+            pass
+            
+        try:
+            existing_pickup = order.pickup_fulfillment
+        except RelatedObjectDoesNotExist:
+            pass
+            
+        if existing_shipping or existing_pickup:
             logger.info(f"Fulfillment already exists for Order {order.order_id}, skipping creation.")
-            return getattr(order, 'shipping', None) or getattr(order, 'pickup_fulfillment', None)
+            return existing_shipping or existing_pickup
 
         # 2. Validate order state (Must be paid)
         if order.status != OrderStatus.PAID:

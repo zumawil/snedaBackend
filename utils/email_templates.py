@@ -153,7 +153,6 @@ def get_order_disapproved_html(order_id, user_first_name, reason=None):
             <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f1f5f9;">
                 <p style="font-size: 12px; color: #9ca3af; margin: 0;">&copy; 2026 Sneda Ecommerce. All rights reserved.</p>
             </div>
-            </div>
         </div>
     </body>
     </html>

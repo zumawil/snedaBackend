@@ -1,7 +1,7 @@
 # In your shipping app models.py
 
 from django.db import models
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from orders.models import Order, PickupLocation
 from users.models import CustomUser as User
 from django.utils import timezone
@@ -10,8 +10,7 @@ class Shipping(models.Model):
     order = models.OneToOneField(
         Order,
         on_delete=models.CASCADE,
-        related_name="shipping",
-        null=True
+        related_name="shipping"
     )
     status = models.CharField(
         max_length=50,
@@ -59,15 +58,21 @@ class Shipping(models.Model):
             raise ValidationError("Cannot create shipping for pickup orders (is_pickup=True)")
         
         # Ensure no pickup fulfillment exists for this order
-        if self.order and hasattr(self.order, 'pickup_fulfillment'):
-            raise ValidationError("Order already has pickup record. Cannot have both pickup and shipping.")
+        if self.order:
+            try:
+                _ = self.order.pickup_fulfillment
+                raise ValidationError("Order already has pickup record. Cannot have both pickup and shipping.")
+            except ObjectDoesNotExist:
+                pass
         
         # Ensure address is provided
         if not self.address:
             raise ValidationError("Shipping address is required for delivery orders")
 
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Only validate on create or if it's a full update
+        if not self.pk or 'update_fields' not in kwargs:
+            self.full_clean()
         super().save(*args, **kwargs)
 
     def mark_as_picked(self, admin_user):

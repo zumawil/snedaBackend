@@ -376,19 +376,23 @@ class OrderCheckoutFlowTestCase(TestCase):
             status='pending'
         )
         
+        # Verify setup: order has shipping but not pickup yet
+        self.assertEqual(order.shipping, shipping)
+        self.assertFalse(hasattr(order, 'pickup_fulfillment'))
+
         # Try to also create PickupFulfillment - should raise ValidationError
-        # during clean() validation
+        # because the order is NOT marked as pickup and already has shipping.
         pickup = PickupFulfillment(
             order=order,
             location='SPINTEX',
             status='pending'
         )
         
-        # Note: In practice, this would be caught by clean() call
-        # Just verify the relationship exists as expected
-        self.assertEqual(order.shipping, shipping)
+        # Trigger model validation (PickupFulfillment.clean() and Order.clean())
+        with self.assertRaises(ValidationError):
+            pickup.full_clean()
         
-        print("✓ Order validation prevents conflicting fulfillment types")
+        print("✓ Order validation prevents conflicting fulfillment types (Shipping and PickupFulfillment)")
 
     def test_complete_checkout_to_fulfillment_flow(self):
         """

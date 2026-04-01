@@ -19,6 +19,5 @@ class FulfillmentService:
             else:
                 logger.info(f"Fulfillment handled for Pickup Order {order.order_id}")
         except Exception as e:
-            logger.error(f"Fulfillment failed for Order {order.order_id}: {str(e)}")
-            # Raise here or handle gracefully; webhook handler will log it.
-            raise e
+            logger.exception(f"Fulfillment failed for Order {order.order_id}")
+            raise
