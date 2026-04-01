@@ -43,15 +43,26 @@ def handle_payment_success(reference, order_id):
                 is_processed=False
             )
 
+            # Lock the order IMMEDIATELY after locking the payment
+            # This prevents the cleanup task from cancelling the order mid-webhook.
+            order = Order.objects.select_for_update().get(pk=payment.order.pk)
+            
+            # 1. Check for already PAID status (processed by another webhook/view)
+            if order.status == utils.paymentConstants.OrderStatus.PAID:
+                logger.info(f"Order {order.id} already processed (PAID), skipping")
+                return
+
+            # 2. Safety Check: If order was CANCELLED by the cleanup task before we got the lock
+            if order.status == utils.paymentConstants.OrderStatus.CANCELLED:
+                logger.warning(f"Payment SUCCESS received for CANCELLED order {order.id}")
+                # Mark for manual review so we can initiate a refund or investigate
+                order.marked_for_review = True
+                order.save(update_fields=['marked_for_review'])
+                return
+
             payment.status = utils.paymentConstants.PaymentStatus.SUCCESS
             payment.is_processed = True
             payment.save()
-
-            # Defense in Depth: Lock the order and check if already processed
-            order = Order.objects.select_for_update().get(pk=payment.order.pk)
-            if order.status == utils.paymentConstants.OrderStatus.PAID:
-                logger.info(f"Order {order.id} already processed (PAID), skipping stock deduction")
-                return
 
             # Confirm reservations and deduct actual stock
             reservations = Reservation.objects.select_for_update().filter(

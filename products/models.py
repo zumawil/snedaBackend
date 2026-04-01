@@ -56,6 +56,11 @@ class Product(models.Model):
     # return available stock considering active reservations
     @property
     def available_stock(self):
+        # 🛡️ Fast path for annotated querysets to avoid N+1 queries
+        annotated = getattr(self, "_available_stock", None)
+        if annotated is not None:
+            return annotated
+            
         from orders.models import Reservation
         from django.db.models import Sum
         from django.utils import timezone

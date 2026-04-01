@@ -14,7 +14,7 @@ from admin_panel.tasks import (
 
 from users.models import CustomUser
 from products.models import Product, ProductImage, Category, Brand, HSCode, ProductGroup
-from orders.models import Order, OrderItem
+from orders.models import Order, OrderItem, OrderStatus
 from payments.models import Payment
 from shipping.models import Shipping
 from notifications.models import Notification
@@ -638,14 +638,6 @@ class AdminOrderCancelView(APIView):
             order.approved = False
             order.save(update_fields=['approved'])
 
-            # Create the tracking record initially
-            job = BackgroundJob.objects.create(
-                task_type="send_order_cancelled_email",
-                related_object_type="order",
-                related_object_id=order.id,
-                user=request.user
-            )
-
         # 2. Run the heavy lifting (includes external refund outside atomic block)
         try:
             order.restore_stock()
@@ -658,7 +650,25 @@ class AdminOrderCancelView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 3. Queue the Celery task
+        # 3. Verify final state before queuing email job
+        if order.status not in [OrderStatus.CANCELLED, OrderStatus.REFUNDED]:
+            return api_response(
+                success=False,
+                error="Incomplete cancellation",
+                message=f"Order is in {order.status} state. Refund may have failed. Please review manually.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 4. Create the tracking record ONLY on success
+        with transaction.atomic():
+            job = BackgroundJob.objects.create(
+                task_type="send_order_cancelled_email",
+                related_object_type="order",
+                related_object_id=order.id,
+                user=request.user
+            )
+
+        # 5. Queue the Celery task
         def dispatch_task():
             result = send_order_cancelled_email_task.delay(job.id, order.id, request.user.id)
             job.task_id = result.id

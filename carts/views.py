@@ -257,8 +257,17 @@ class CheckoutView(APIView):
             
         address = request.data.get('address')
         pickup = str(request.data.get('pickup', '')).lower() == 'true'
-        pickup_location = request.data.get('pickup_location') # Frontend sends pickup_location as requested
-
+        pickup_location = request.data.get('pickup_location')
+        if pickup and not pickup_location:
+            return api_response(
+                success=False,
+                data=None,
+                error="Pickup location required",
+                message="pickup_location is required when pickup is true",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        if not pickup:
+            pickup_location = None
         result = CheckoutService.process_checkout(user, idempotency_key, address, pickup, pickup_location)
 
         return api_response(

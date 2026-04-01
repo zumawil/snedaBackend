@@ -36,8 +36,8 @@ class Order(models.Model):
     # System-controlled status (payment/business state only)
     status = models.CharField(
         max_length=20, 
-        choices=Status.choices, 
-        default=Status.PENDING
+        choices=OrderStatus.choices, 
+        default=OrderStatus.PENDING
     )
     
     # Fulfillment type indicator ONLY
@@ -65,6 +65,7 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if not self.order_id:
             self.order_id = self.generate_unique_order_id()
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def get_payment(self):
