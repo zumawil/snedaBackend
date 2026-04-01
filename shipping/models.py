@@ -50,10 +50,14 @@ class Shipping(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Shipping for Order {self.order.order_id} - {self.status}"
+        order_id = getattr(self.order, 'order_id', self.order_id)
+        return f"Shipping for Order {order_id} - {self.status}"
 
     def clean(self):
         """Ensure order is NOT marked as pickup"""
+        if not self.order_id:
+            return
+            
         if self.order and self.order.is_pickup:
             raise ValidationError("Cannot create shipping for pickup orders (is_pickup=True)")
         

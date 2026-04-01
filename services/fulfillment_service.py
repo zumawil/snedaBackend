@@ -10,14 +10,14 @@ class FulfillmentService:
         Main entry point for all post-payment activities.
         Calls ShippingService and any other future-proof actions.
         """
-        logger.info(f"Fulfillment started for Order {order.order_id}")
+        logger.info("Fulfillment started for Order %s", order.order_id)
         
         try:
             shipping = ShippingService.create_shipping_from_order(order)
             if shipping:
-                logger.info(f"Fulfillment success for Order {order.order_id}")
+                logger.info("Fulfillment success for Order %s", order.order_id)
             else:
-                logger.info(f"Fulfillment handled for Pickup Order {order.order_id}")
-        except Exception as e:
-            logger.exception(f"Fulfillment failed for Order {order.order_id}")
+                logger.info("Fulfillment handled for Pickup Order %s", order.order_id)
+        except Exception:
+            logger.exception("Fulfillment failed for Order %s", order.order_id)
             raise

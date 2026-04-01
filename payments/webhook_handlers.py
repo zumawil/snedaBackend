@@ -49,7 +49,7 @@ def handle_payment_success(reference, order_id):
 
             # Defense in Depth: Lock the order and check if already processed
             order = Order.objects.select_for_update().get(pk=payment.order.pk)
-            if order.status == utils.paymentConstants.Status.PAID:
+            if order.status == utils.paymentConstants.OrderStatus.PAID:
                 logger.info(f"Order {order.id} already processed (PAID), skipping stock deduction")
                 return
 
@@ -103,7 +103,7 @@ def handle_payment_success(reference, order_id):
                     order.user.cart.items.all().delete()
 
                     # Update order status to PAID (fulfillment follows)
-                    order.status = utils.paymentConstants.Status.PAID
+                    order.status = utils.paymentConstants.OrderStatus.PAID
                     order.save()
 
                     # 1. Create the tracking record for email
@@ -137,7 +137,7 @@ def handle_payment_success(reference, order_id):
                 # We only log the failure. The Order remains PENDING or PAID (without fulfillment).
                 logger.error(f"Fulfillment blocked for PAID order {order.id}: {str(e)}")
                 order.marked_for_review = True
-                order.status = utils.paymentConstants.Status.PAID
+                order.status = utils.paymentConstants.OrderStatus.PAID
                 order.save(update_fields=['marked_for_review', 'status'])
                 
     except Payment.DoesNotExist:

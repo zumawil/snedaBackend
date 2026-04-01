@@ -20,7 +20,7 @@ class Reviews(models.Model):
     )
 
     def __str__(self):
-        return f"Review by {self.user.email} on {self.product}"
+        return f"Review for {self.product.item_no if self.product else 'Unknown Product'} ({self.rating}/5)"
 
 
     class Meta:

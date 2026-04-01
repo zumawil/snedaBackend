@@ -354,22 +354,27 @@ LOGGING = {
     #  Which parts of Django/DRF generate logs
     # -----------------------------
     "loggers": {
+        # Root logger: catches all logs from project apps
+        "": {
+            "handlers": ["console", "file_error", "file_warning"],
+            "level": "INFO",
+        },
         # Django general logs (warnings, errors, anything internal)
         "django": {
-            "handlers": ["file_error", "file_warning"],  # Save warnings & errors to files
-            "propagate": True,  # Allow logs to bubble up
+            "handlers": ["console", "file_error", "file_warning"],
+            "propagate": True,
         },
 
         # Logs for 500 errors coming from views, middleware, etc.
         "django.request": {
-            "handlers": ["file_error"],  # Only log errors
+            "handlers": ["console", "file_error"],
             "level": "ERROR",
             "propagate": False,
         },
 
-        # DRF-specific logs (throttling, parsing issues, schema warnings)
+        # DRF-specific logs
         "rest_framework": {
-            "handlers": ["file_warning"],  # Only warnings
+            "handlers": ["console", "file_warning"],
             "level": "WARNING",
             "propagate": False,
         },

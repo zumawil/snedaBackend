@@ -7,13 +7,47 @@ from django.db import migrations, models
 
 def update_order_statuses(apps, schema_editor):
     Order = apps.get_model('orders', 'Order')
-    # Update 'fulfilled' and 'delivered' to 'pending' (or another valid choice)
-    # as these are being removed from the choices in this migration.
-    Order.objects.filter(status__in=['fulfilled', 'delivered']).update(status='pending')
+    PickupFulfillment = apps.get_model('orders', 'PickupFulfillment')
+    
+    # Try to get Shipping model if it exists at this point
+    Shipping = None
+    try:
+        Shipping = apps.get_model('shipping', 'Shipping')
+    except (LookupError, ValueError):
+        pass
+
+    # 1. Update status mapping
+    # 'fulfilled' and 'delivered' are legacy and should map to 'paid'
+    Order.objects.filter(status__in=['fulfilled', 'delivered']).update(status='paid')
+
+    # 2. Migrate fulfillment data
+    for order in Order.objects.all():
+        # Check if fulfillment already exists (idempotency check)
+        has_pickup = PickupFulfillment.objects.filter(order=order).exists()
+        has_shipping = (Shipping and Shipping.objects.filter(order=order).exists())
+
+        if order.is_pickup and not has_pickup:
+            # Transfer pickup_location to PickupFulfillment
+            loc = getattr(order, 'pickup_location', None)
+            if loc:
+                PickupFulfillment.objects.create(
+                    order=order,
+                    location=loc,
+                    status='pending'  # Default for existing orders
+                )
+        elif not order.is_pickup and not has_shipping and Shipping:
+            # Transfer shipping_address to Shipping
+            addr = getattr(order, 'shipping_address', None)
+            if addr:
+                Shipping.objects.create(
+                    order=order,
+                    address=addr,
+                    status='pending'
+                )
 
 def reverse_order_statuses(apps, schema_editor):
-    # This is a no-op as we don't know which orders were fulfilled vs delivered.
-    # But usually we provide it to make the migration reversible.
+    # This is a no-op as the legacy fields will be recreated but data is lost in downgrade
+    # unless we explicitly reversed it, but usually not required for this type of refactor.
     pass
 
 class Migration(migrations.Migration):

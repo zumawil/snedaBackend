@@ -1,3 +1,5 @@
+from django.utils.html import escape
+
 # get otp email template
 def get_otp_email_html(otp):
     return f"""
@@ -78,17 +80,17 @@ def get_order_confirmation_html(order_id, user_first_name, amount, order_items_s
         <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
             <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 20px; text-align: center;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Order Confirmed!</h1>
-                <p style="color: #d1fae5; margin-top: 8px; font-size: 16px;">Order #{order_id}</p>
+                <p style="color: #d1fae5; margin-top: 8px; font-size: 16px;">Order #{escape(str(order_id))}</p>
             </div>
             <div style="padding: 40px;">
-                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {user_first_name or 'Valued Customer'},</p>
-                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Your payment of <b>GHS {amount}</b> has been successfully processed. We're now preparing your order for shipment.</p>
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {escape(str(user_first_name or 'Valued Customer'))},</p>
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Your payment of <b>GHS {escape(str(amount))}</b> has been successfully processed. We're now preparing your order for shipment.</p>
                 
                 <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; border: 1px solid #e5e7eb; margin-bottom: 24px;">
                     <h2 style="font-size: 18px; color: #1f2937; margin-top: 0; margin-bottom: 16px;">Order Summary</h2>
-                    <pre style="white-space: pre-wrap; font-family: inherit; color: #4b5563; margin: 0; font-size: 14px;">{order_items_summary}</pre>
+                    <pre style="white-space: pre-wrap; font-family: inherit; color: #4b5563; margin: 0; font-size: 14px;">{escape(str(order_items_summary))}</pre>
                     <div style="margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; font-weight: 700; color: #1f2937;">
-                        Total: GHS {total_amount}
+                        Total: GHS {escape(str(total_amount))}
                     </div>
                 </div>
                 
@@ -110,17 +112,17 @@ def get_order_approved_html(order_id, user_first_name, items_summary, total_amou
         <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
             <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 20px; text-align: center;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Order Approved!</h1>
-                <p style="color: #d1fae5; margin-top: 8px; font-size: 16px;">Order #{order_id}</p>
+                <p style="color: #d1fae5; margin-top: 8px; font-size: 16px;">Order #{escape(str(order_id))}</p>
             </div>
             <div style="padding: 40px;">
-                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {user_first_name or 'Valued Customer'},</p>
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {escape(str(user_first_name or 'Valued Customer'))},</p>
                 <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Great news! Your order has been <b style="color: #10b981;">approved</b> and is now being processed for shipment.</p>
                 
                 <div style="background-color: #f9fafb; border-radius: 8px; padding: 20px; border: 1px solid #e5e7eb; margin-bottom: 24px;">
                     <h2 style="font-size: 18px; color: #1f2937; margin-top: 0; margin-bottom: 16px;">Order Details</h2>
-                    <pre style="white-space: pre-wrap; font-family: inherit; color: #4b5563; margin: 0; font-size: 14px;">{items_summary}</pre>
+                    <pre style="white-space: pre-wrap; font-family: inherit; color: #4b5563; margin: 0; font-size: 14px;">{escape(str(items_summary))}</pre>
                     <div style="margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; font-weight: 700; color: #1f2937;">
-                        Total: GHS {total_amount}
+                        Total: GHS {escape(str(total_amount))}
                     </div>
                 </div>
                 
@@ -174,10 +176,10 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
     
     fulfillment_section = ""
     if fulfillment:
-        f_type = fulfillment.get('type', 'delivery').capitalize()
-        f_location = fulfillment.get('location', 'N/A')  # For pickup orders
-        f_address = fulfillment.get('display_address', 'N/A')  # Common for both
-        f_tracking = fulfillment.get('tracking_number', '')  # For delivery orders
+        f_type = escape(str(fulfillment.get('type', 'delivery').capitalize()))
+        f_location = escape(str(fulfillment.get('location', 'N/A')))  # For pickup orders
+        f_address = escape(str(fulfillment.get('display_address', 'N/A')))  # Common for both
+        f_tracking = escape(str(fulfillment.get('tracking_number', '')))  # For delivery orders
         is_pickup = fulfillment.get('type') == 'pickup'
         
         fulfillment_section = f"""
@@ -194,7 +196,7 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
     elif tracking_number:
         fulfillment_section = f"""
                 <div style="background-color: #f9fafb; border-radius: 8px; padding: 16px; margin-top: 16px; border: 1px solid #e5e7eb;">
-                    <p style="color: #4b5563; font-size: 14px; margin: 0;"><b>Tracking Number:</b> {tracking_number}</p>
+                    <p style="color: #4b5563; font-size: 14px; margin: 0;"><b>Tracking Number:</b> {escape(str(tracking_number))}</p>
                 </div>
         """
 
@@ -205,14 +207,14 @@ def get_shipping_status_update_html(order_id, user_first_name, new_status, track
         <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); border: 1px solid #e1e4e8;">
             <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 40px 20px; text-align: center;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Shipping Update</h1>
-                <p style="color: #e0e7ff; margin-top: 8px; font-size: 16px;">Order #{order_id}</p>
+                <p style="color: #e0e7ff; margin-top: 8px; font-size: 16px;">Order #{escape(str(order_id))}</p>
             </div>
             <div style="padding: 40px;">
-                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {user_first_name or 'Valued Customer'},</p>
+                <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Hello {escape(str(user_first_name or 'Valued Customer'))},</p>
                 <p style="color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 24px;">Your order status has been updated to:</p>
                 
                 <div style="background-color: #f3f4f6; border-radius: 12px; padding: 24px; text-align: center; border: 2px solid {status_color};">
-                    <span style="font-size: 24px; font-weight: 700; color: {status_color}; text-transform: uppercase;">{status_text}</span>
+                    <span style="font-size: 24px; font-weight: 700; color: {status_color}; text-transform: uppercase;">{escape(str(status_text))}</span>
                 </div>
                 
                 {fulfillment_section}

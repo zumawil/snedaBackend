@@ -5,18 +5,22 @@ from shipping.models import Shipping
 from shipping.generate_shipping_number import generate_tracking_number
 from orders.models import Order, PickupFulfillment
 from carts.models import CheckoutAttempt
-from utils.paymentConstants import Status as OrderStatus
+from utils.paymentConstants import OrderStatus
 
 logger = logging.getLogger(__name__)
 
 class ShippingService:
     @staticmethod
+    @transaction.atomic
     def create_shipping_from_order(order):
         """
         Create a fulfillment record (Shipping or PickupFulfillment) for a paid order.
         Retrieves address/location from CheckoutAttempt.
         Includes idempotency guard and standard status management.
         """
+        # Lock the order row to prevent concurrent fulfillment creation
+        order = Order.objects.select_for_update().get(pk=order.pk)
+
         # 1. Idempotency guard: check if fulfillment already exists
         existing_shipping = None
         existing_pickup = None
@@ -48,31 +52,30 @@ class ShippingService:
         address = checkout_attempt.address
         pickup_location = checkout_attempt.pickup_location
 
-        with transaction.atomic():
-            # 3. Handle Pickup vs Delivery
-            if order.is_pickup:
-                # Create PickupFulfillment for pickup orders
-                if not pickup_location:
-                    raise ValueError("Pickup location required for pickup orders")
-                
-                pickup_fulfillment = PickupFulfillment.objects.create(
-                    order=order,
-                    location=pickup_location,
-                    status=PickupFulfillment.Status.PENDING
-                )
-                logger.info(f"PickupFulfillment created for Order {order.order_id} at {pickup_location}")
-                return pickup_fulfillment
-            else:
-                # Create Shipping for delivery orders
-                if not address:
-                    raise ValueError("Delivery address required for delivery orders")
-                
-                tracking_number = generate_tracking_number()
-                shipping = Shipping.objects.create(
-                    order=order,
-                    status="pending",
-                    tracking_number=tracking_number,
-                    address=address
-                )
-                logger.info(f"Shipping created for Order {order.order_id} with tracking: {tracking_number}")
-                return shipping
+        # 3. Handle Pickup vs Delivery
+        if order.is_pickup:
+            # Create PickupFulfillment for pickup orders
+            if not pickup_location:
+                raise ValueError("Pickup location required for pickup orders")
+            
+            pickup_fulfillment = PickupFulfillment.objects.create(
+                order=order,
+                location=pickup_location,
+                status=PickupFulfillment.Status.PENDING
+            )
+            logger.info(f"PickupFulfillment created for Order {order.order_id} at {pickup_location}")
+            return pickup_fulfillment
+        else:
+            # Create Shipping for delivery orders
+            if not address:
+                raise ValueError("Delivery address required for delivery orders")
+            
+            tracking_number = generate_tracking_number()
+            shipping = Shipping.objects.create(
+                order=order,
+                status="pending",
+                tracking_number=tracking_number,
+                address=address
+            )
+            logger.info(f"Shipping created for Order {order.order_id} with tracking: {tracking_number}")
+            return shipping

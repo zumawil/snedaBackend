@@ -65,7 +65,7 @@ class Product(models.Model):
             expires_at__gt=timezone.now()
         ).aggregate(total=Sum('quantity'))['total']
         
-        return self.inventory_qty - (total or 0)
+        return max(0, self.inventory_qty - (total or 0))
 
     
 class ProductImage(models.Model):

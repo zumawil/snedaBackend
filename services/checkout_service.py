@@ -15,7 +15,7 @@ from utils.payment_helpers import bill_user, verify_transaction_status
 from utils.apiResponse import api_response
 from rest_framework import status
 from orders.models import Order, OrderItem, Reservation
-from utils.paymentConstants import Status as OrderStatus
+from utils.paymentConstants import OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -134,11 +134,7 @@ class CheckoutService:
                             # Re-verify stock availability before re-activating
                             available = product.available_stock()
                             if available < item.quantity:
-                                return {
-                                    'success': False,
-                                    'error': 'Out of stock',
-                                    'message': f'Sorry, {product.item_no} is now out of stock and cannot be retried.'
-                                }
+                                raise ValueError(f'Sorry, {product.item_no} is now out of stock and cannot be retried.')
                             reservation.status = Reservation.Status.ACTIVE
                             reservation.expires_at = timezone.now() + timedelta(minutes=15)
                             reservation.save()
@@ -151,6 +147,13 @@ class CheckoutService:
                         # but let's be explicit if needed.
                         pass
 
+        except ValueError as e:
+            logger.error(f"Stock failure retrying payment for order #{order_id}: {str(e)}")
+            return {
+                'success': False,
+                'error': 'Out of stock',
+                'message': str(e)
+            }
         except Exception as e:
             logger.error(f"Error retrying payment for order #{order_id}: {str(e)}")
             return {
@@ -254,9 +257,19 @@ class CheckoutService:
         """
         Phase 1: Atomically check idempotency, create order, and reserve stock.
             Returns: (order, amount) tuple or response dict if order already exists
-            create a reservation for the order items instead of touching stock directly. 
-            This allows to handle payment failures more gracefully without risking stock inconsistencies.
         """
+        # Early fulfillment validation
+        if pickup:
+            if not pickup_location:
+                raise ValueError("Pickup location is required for pickup orders")
+            if address:
+                raise ValueError("Address should not be provided for pickup orders")
+        else:
+            if not address:
+                raise ValueError("Delivery address is required")
+            if pickup_location:
+                raise ValueError("Pickup location should not be provided for delivery orders")
+
         with transaction.atomic():
         # lock rows to prevent race conditions
             attempt, created = CheckoutAttempt.objects.select_for_update().get_or_create(key=idempotency_key)
@@ -375,51 +388,48 @@ class CheckoutService:
         Phase 2: Process external payment (outside transaction).
         Shipping is now deferred until payment confirmation (webhook).
         """
-        try:
-            # Initiate payment with external provider
-            data = bill_user(amount, user.email, order_id=order.id, retry_count=0)
+        # Initiate payment with external provider
+        data = bill_user(amount, user.email, order_id=order.id, retry_count=0)
 
-            payment = None
-            if data.get('status') == True:
-                # Create payment record
-                payment = Payment.objects.create(
-                    order=order,
-                    amount=amount,
-                    status=utils.paymentConstants.PaymentStatus.PENDING,
-                    paystack_reference=data['data']['reference'],
-                    authorization_url=data['data']['authorization_url']
-                )
-                logger.info(f"Payment created for order {order.id} with reference {data['data']['reference']}")
-
-            # Prepare response
-            response_data = {
-                'order': OrderSerializer(order).data,
-            }
-
-            if payment:
-                response_data['payment'] = PaymentSerializer(payment).data
-                response_data['payment_url'] = data['data']['authorization_url']
-
-            return {
-                'success': True,
-                'data': response_data,
-                'message': "Checkout completed successfully",
-                'status_code': status.HTTP_201_CREATED
-            }
-            
-        except Exception as e:
-            # Payment/shipping failed but order exists with reserved stock
+        if data.get('status') != True:
+            # Payment initialization failed - roll back reservation
             CheckoutService._cancel_order_and_restore_stock(order)
-            logger.error(f"Payment/shipping failed for order {order.id}: {str(e)}")
+            error_message = data.get('message', 'Failed to initialize payment gateway')
+            logger.error(f"Payment gateway initialization failed for order {order.id}: {error_message}")
             
             return {
                 'success': False,
-                'data': {'order_id': order.id},
-                'error': str(e),
-                'message': "Order created but payment failed. Please contact support.",
-                'status_code': status.HTTP_500_INTERNAL_SERVER_ERROR
+                'data': {'order_id': order.id, 'gateway_response': data},
+                'error': error_message,
+                'message': "Order created but payment initialization failed. Please try again.",
+                'status_code': status.HTTP_502_BAD_GATEWAY
             }
-            
+
+        # Create payment record
+        payment = Payment.objects.create(
+            order=order,
+            amount=amount,
+            status=utils.paymentConstants.PaymentStatus.PENDING,
+            paystack_reference=data['data']['reference'],
+            authorization_url=data['data']['authorization_url']
+        )
+        logger.info(f"Payment created for order {order.id} with reference {data['data']['reference']}")
+
+        # Prepare response
+        response_data = {
+            'order': OrderSerializer(order).data,
+        }
+
+        if payment:
+            response_data['payment'] = PaymentSerializer(payment).data
+            response_data['payment_url'] = data['data']['authorization_url']
+
+        return {
+            'success': True,
+            'data': response_data,
+            'message': "Checkout completed successfully",
+            'status_code': status.HTTP_201_CREATED
+        }
     @staticmethod
     def _cancel_order_and_restore_stock(order):
         """

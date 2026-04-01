@@ -16,7 +16,7 @@ class PaymentMethod:
     QR = "qr"
     BANK_TRANSFER = "bank_transfer"
 
-class Status(models.TextChoices):
+class OrderStatus(models.TextChoices):
     PENDING = 'pending', 'Pending'         # System: cart created
     PAID = 'paid', 'Paid'                  # System: payment confirmed
     CANCELLED = 'cancelled', 'Cancelled'   # System/Business logic

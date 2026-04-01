@@ -10,7 +10,7 @@ import string
 import logging
 
 logger = logging.getLogger(__name__)
-from utils.paymentConstants import Status
+from utils.paymentConstants import OrderStatus
 
 class PickupLocation(models.TextChoices):
     NIA = 'NIA', 'National Information Agency'
@@ -137,82 +137,83 @@ class Order(models.Model):
             refund_successful = False
             
             # 2. Attempt refund first (if needed)
-            new_status = Status.CANCELLED
+            new_status = OrderStatus.CANCELLED
+            needs_refund = self.status == OrderStatus.PAID
+            new_status = OrderStatus.CANCELLED
+            refund_successful = False
+            payment = None
+
             if needs_refund:
-                from utils.payment_helpers import initiate_paystack_refund
                 payment = self.payments.filter(status='success', is_processed=True).first()
-                if payment and payment.paystack_reference:
-                    success, message = initiate_paystack_refund(payment.paystack_reference, payment.amount)
-                    if success:
-                        refund_successful = True
-                        new_status = Status.REFUNDED
-                        logger.info(f"Refund issued for order {self.order_id}")
-                    else:
-                        logger.error(f"Refund failed for order {self.order_id}: {message}")
-                        self.marked_for_review = True
-                        new_status = Status.CANCELLATION_PENDING
-                        # We save here to persist the review flag and pending status
-                        self.status = new_status
-                        self.save(update_fields=['marked_for_review', 'status'])
-                        return # STOP: Do not restore stock or cancel fulfillment if refund failed
-                else:
+                if not payment or not payment.paystack_reference:
                     logger.warning(f"Refund needed for order {self.order_id} but no valid payment found.")
-                    # If we can't refund but should have, mark for review
                     self.marked_for_review = True
-                    self.save(update_fields=['marked_for_review'])
+                    self.status = OrderStatus.CANCELLATION_PENDING
+                    self.save(update_fields=['marked_for_review', 'status'])
+                    return # Exit: Requires manual review
+
+            # 2. Call external refund outside TRANSACTION (if possible)
+            # Note: Caller should ideally NOT be in an atomic block here.
+            if needs_refund and payment:
+                from utils.payment_helpers import initiate_paystack_refund
+                success, message = initiate_paystack_refund(payment.paystack_reference, payment.amount)
+                if success:
+                    refund_successful = True
+                    new_status = OrderStatus.REFUNDED
+                    logger.info(f"Refund issued for order {self.order_id}")
+                else:
+                    logger.error(f"Refund failed for order {self.order_id}: {message}")
+                    self.marked_for_review = True
+                    self.status = OrderStatus.CANCELLATION_PENDING
+                    self.save(update_fields=['marked_for_review', 'status'])
+                    return # Exit: Refund failed, stop here.
             else:
-                # No refund needed (either already refunded or never paid)
+                # No refund needed
                 refund_successful = True
 
-            # 3. Only proceed with irreversible actions if refund succeeded or wasn't needed
-            if refund_successful:
-                # Cancel active reservations (always done for cancellation)
-                active_reservations = self.reservations.filter(status=Reservation.Status.ACTIVE)
+            # 3. Finalize restoration (Atomic)
+            with transaction.atomic():
+                # Re-fetch with lock for final updates
+                order = Order.objects.select_for_update().get(pk=self.pk)
+                
+                # Double check status to avoid race conditions
+                if order.status == OrderStatus.CANCELLED or order.status == OrderStatus.REFUNDED:
+                    return
+
+                # Cancel active/confirmed reservations
+                active_reservations = order.reservations.filter(status=Reservation.Status.ACTIVE)
                 active_reservations.update(status=Reservation.Status.CANCELLED)
 
-                # Check if we can restore physical stock
                 can_restore_physical = True
                 
-                # Check delivery orders
-                if hasattr(self, 'shipping') and self.shipping:
-                    if self.shipping.status in ['shipped', 'delivered']:
+                # Preserve audit trail for handoff-complete states
+                if hasattr(order, 'shipping') and order.shipping:
+                    if order.shipping.status in ['shipped', 'delivered']:
                         can_restore_physical = False
-                        logger.warning(
-                            f"Order {self.order_id}: Stock NOT restored - shipping status is '{self.shipping.status}'"
-                        )
+                        logger.warning(f"Order {order.id}: Stock NOT restored - already shipped/delivered")
+                    else:
+                        order.shipping.status = 'cancelled'
+                        order.shipping.save(update_fields=['status'])
                 
-                # Check pickup orders
-                if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
-                    if self.pickup_fulfillment.status == 'completed':
+                if hasattr(order, 'pickup_fulfillment') and order.pickup_fulfillment:
+                    if order.pickup_fulfillment.status == 'completed':
                         can_restore_physical = False
-                        logger.warning(
-                            f"Order {self.order_id}: Stock NOT restored - pickup is completed"
-                        )
+                        logger.warning(f"Order {order.id}: Stock NOT restored - pickup already completed")
+                    else:
+                        order.pickup_fulfillment.status = 'cancelled'
+                        order.pickup_fulfillment.save(update_fields=['status'])
 
-                # Restore physical stock if applicable
                 if can_restore_physical:
-                    # confirmed_reservations are items that were already deducted from inventory
-                    confirmed_reservations = self.reservations.filter(status=Reservation.Status.CONFIRMED)
-                    for res in confirmed_reservations:
+                    confirmed_res = order.reservations.filter(status=Reservation.Status.CONFIRMED)
+                    for res in confirmed_res:
                         Product.objects.filter(pk=res.product.pk).update(
                             inventory_qty=models.F('inventory_qty') + res.quantity
                         )
                         res.status = Reservation.Status.CANCELLED
                         res.save()
                 
-                # Cancel fulfillment records
-                if hasattr(self, 'shipping') and self.shipping:
-                    self.shipping.status = 'cancelled'
-                    self.shipping.save(update_fields=['status'])
-                
-                if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
-                    self.pickup_fulfillment.status = 'cancelled'
-                    self.pickup_fulfillment.save(update_fields=['status'])
-                
-                self.status = new_status
-                self.save()
-                
-                logger.info(f"Order {self.order_id} set to {new_status}")
+                order.status = new_status
+                order.save(update_fields=['status'])
             
             logger.info(f"Order {self.order_id} set to {new_status}")
 
@@ -220,7 +221,7 @@ class Order(models.Model):
         """Return True if order can be cancelled"""
         if self.is_closed:
             return False
-        return self.status in [Status.PENDING, Status.PAID]
+        return self.status in [OrderStatus.PENDING, OrderStatus.PAID]
 
     def generate_unique_order_id(self):
         date_str = timezone.now().strftime("%Y%m%d")
@@ -323,6 +324,9 @@ class PickupFulfillment(models.Model):
 
     def clean(self):
         """Ensure order is marked as pickup"""
+        if not self.order_id:
+            return
+            
         if self.order and not self.order.is_pickup:
             raise ValidationError("Can only create PickupFulfillment for pickup orders (is_pickup=True)")
         

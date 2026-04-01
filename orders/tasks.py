@@ -8,7 +8,7 @@ from utils.paymentConstants import PaymentStatus
 from payments.models import Payment
 from django.db.models import Exists, OuterRef
 from services.checkout_service import CheckoutService
-from utils.paymentConstants import Status as OrderStatus
+from utils.paymentConstants import OrderStatus
 
 logger = logging.getLogger(__name__)
 

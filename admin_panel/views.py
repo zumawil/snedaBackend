@@ -117,9 +117,12 @@ class DashboardStatsView(APIView):
             total_orders = Order.objects.count()
             # Count pending orders (delivery with pending shipping OR pickup with pending fulfillment OR no fulfillment yet)
             total_pending_orders = Order.objects.filter(
-                Q(shipping__status='pending') | 
-                Q(pickup_fulfillment__status='pending') |
-                Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                (
+                    Q(shipping__status='pending') | 
+                    Q(pickup_fulfillment__status='pending') |
+                    Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                ) & 
+                ~Q(status__in=['cancelled', 'refunded'])
             ).count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
@@ -301,9 +304,12 @@ class AdminOrderListView(APIView):
                 if order_status == 'pending':
                     # Pending: delivery orders with pending shipping OR pickup orders with pending fulfillment OR no fulfillment yet
                     orders = orders.filter(
-                        Q(shipping__status='pending') | 
-                        Q(pickup_fulfillment__status='pending') |
-                        Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                        (
+                            Q(shipping__status='pending') | 
+                            Q(pickup_fulfillment__status='pending') |
+                            Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                        ) & 
+                        ~Q(status__in=['cancelled', 'refunded'])
                     )
                 else:
                     # For other statuses, check both shipping and pickup fulfillment
@@ -313,7 +319,12 @@ class AdminOrderListView(APIView):
                     )
                     
             if search_query:
-                conditions = Q(user__email__icontains=search_query) | Q(user__first_name__icontains=search_query) | Q(user__last_name__icontains=search_query)
+                conditions = (
+                    Q(user__email__icontains=search_query) | 
+                    Q(user__first_name__icontains=search_query) | 
+                    Q(user__last_name__icontains=search_query) |
+                    Q(order_id__iexact=search_query)
+                )
                 if search_query.isdigit():
                     conditions |= Q(id=search_query)
                 orders = orders.filter(conditions)
@@ -610,50 +621,57 @@ class AdminOrderCancelView(APIView):
             404: openapi.Response(description="Order not found")
         }
     )
-    @transaction.atomic
     def post(self, request, pk):
-        # Lock order row to avoid race conditions
-        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
+        # 1. Lock order row to ensure consistent state check
+        with transaction.atomic():
+            order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
 
-        if order.effective_status == "cancelled":
+            if not order.is_cancellable():
+                return api_response(
+                    success=False,
+                    error="Not cancellable",
+                    message=f"Order in status {order.status} cannot be cancelled",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Mark for review/rejection initially
+            order.approved = False
+            order.save(update_fields=['approved'])
+
+            # Create the tracking record initially
+            job = BackgroundJob.objects.create(
+                task_type="send_order_cancelled_email",
+                related_object_type="order",
+                related_object_id=order.id,
+                user=request.user
+            )
+
+        # 2. Run the heavy lifting (includes external refund outside atomic block)
+        try:
+            order.restore_stock()
+        except Exception as e:
+            logger.exception("Error during restore_stock in AdminOrderCancelView")
             return api_response(
                 success=False,
-                error="Already cancelled",
-                message="Order already cancelled",
-                status_code=status.HTTP_400_BAD_REQUEST
+                error=str(e),
+                message="Error processing cancellation",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Restore stock for each order item
-        for item in order.items.all():
-            Product.objects.filter(id=item.product.id).update(
-                inventory_qty=F('inventory_qty') + item.quantity
-            )
-
-        # Cancel shipping if present
-        if hasattr(order, "shipping") and order.shipping:
-            order.shipping.status = "cancelled"
-            order.shipping.save()
-
-        # Mark order as not approved
-        order.approved = False
-        order.save()
-        
-        # 1. Create the tracking record in 'pending' state
-        job = BackgroundJob.objects.create(
-            task_type="send_order_cancelled_email",
-            related_object_type="order",
-            related_object_id=order.id,
-            user=request.user
-        )
-
-        # 2. Queue the Celery task safely
+        # 3. Queue the Celery task
         def dispatch_task():
             result = send_order_cancelled_email_task.delay(job.id, order.id, request.user.id)
-            # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
 
         transaction.on_commit(dispatch_task)
+
+        return api_response(
+            success=True,
+            data={"job_id": job.id},
+            message="Order cancellation processed successfully",
+            status_code=status.HTTP_200_OK
+        )
 
         return api_response(
             success=True,

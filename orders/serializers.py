@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Order, OrderItem, PickupFulfillment, Reservation
-from utils.paymentConstants import Status as OrderStatus
+from utils.paymentConstants import OrderStatus
 from users.serializers import UserSerializer
 from products.serializers import ProductSerializer
 
@@ -208,10 +208,28 @@ class OrderDetailSerializer(serializers.ModelSerializer):
 
 
 class OrderStatusUpdateSerializer(serializers.Serializer):
-    """Serializer for updating order status"""
+    """Serializer for updating order status (Fulfillment status)"""
+    def get_combined_choices():
+        # Combined choices for both delivery and pickup fulfillments
+        delivery_choices = [
+            ("pending", "Pending"),
+            ("approved", "Approved"),
+            ("picked", "Picked"),
+            ("shipped", "Shipped"),
+            ("delivered", "Delivered"),
+            ('cancelled', 'Cancelled'),
+        ]
+        pickup_choices = [
+            ('ready', 'Ready for Pickup'),
+            ('completed', 'Completed'),
+        ]
+        # Use a dict to ensure unique keys
+        all_choices = {k: v for k, v in delivery_choices + pickup_choices}
+        return list(all_choices.items())
+
     status = serializers.ChoiceField(
-        choices=OrderStatus.choices,
-        help_text="New order status"
+        choices=get_combined_choices(),
+        help_text="New fulfillment status"
     )
 
 
