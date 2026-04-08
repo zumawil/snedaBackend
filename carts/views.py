@@ -268,6 +268,8 @@ class CheckoutView(APIView):
             )
         if not pickup:
             pickup_location = None
+        else:
+            address = None
         result = CheckoutService.process_checkout(user, idempotency_key, address, pickup, pickup_location)
 
         return api_response(

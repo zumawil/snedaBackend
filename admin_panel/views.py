@@ -14,7 +14,7 @@ from admin_panel.tasks import (
 
 from users.models import CustomUser
 from products.models import Product, ProductImage, Category, Brand, HSCode, ProductGroup
-from orders.models import Order, OrderItem, OrderStatus
+from orders.models import Order, OrderItem, OrderStatus, PickupFulfillment
 from payments.models import Payment
 from shipping.models import Shipping
 from notifications.models import Notification
@@ -421,6 +421,44 @@ class AdminUpdateOrderStatusView(APIView):
                 success=False,
                 error="Order is not approved",
                 message="Order cannot be updated as it is not approved",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 1. Update Fulfillment status in DB
+        normalized_status = new_status.lower()
+        try:
+            if order.is_pickup:
+                if not hasattr(order, 'pickup_fulfillment'):
+                    return api_response(
+                        success=False,
+                        error="No pickup record",
+                        message="Order has no pickup fulfillment record",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                pickup = order.pickup_fulfillment
+                if normalized_status in ['ready']:
+                    pickup.mark_as_ready(request.user)
+                elif normalized_status in ['completed']:
+                    pickup.mark_as_completed(request.user)
+                else:
+                    pickup.status = normalized_status
+                    pickup.save()
+            else:
+                if not hasattr(order, 'shipping'):
+                    return api_response(
+                        success=False,
+                        error="No shipping record",
+                        message="Order has no shipping record",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+                order.shipping.status = normalized_status
+                order.shipping.save()
+        except Exception as e:
+            return api_response(
+                success=False,
+                error=str(e),
+                message="Failed to update fulfillment status",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 

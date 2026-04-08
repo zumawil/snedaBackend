@@ -214,7 +214,11 @@ class CheckoutService:
             }
 
     @staticmethod
-    def process_checkout(user, idempotency_key, address, pickup, pickup_location=None):
+    def process_checkout(user, 
+                        idempotency_key, 
+                        address, 
+                        pickup, 
+                        pickup_location=None):
         """
         Coordinates the entire checkout process:
         1. Idempotency check & stock reservation (atomic)
