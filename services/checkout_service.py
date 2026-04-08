@@ -15,7 +15,7 @@ from utils.payment_helpers import bill_user, verify_transaction_status
 from utils.apiResponse import api_response
 from rest_framework import status
 from orders.models import Order, OrderItem, Reservation
-from utils.paymentConstants import OrderStatus
+from utils.paymentConstants import OrderStatus, PaymentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +47,13 @@ class CheckoutService:
             }
 
         # If payment already succeeded and processed, no retry needed
-        if latest_payment.status == utils.paymentConstants.PaymentStatus.SUCCESS and latest_payment.is_processed:
+        if latest_payment.status == PaymentStatus.SUCCESS and latest_payment.is_processed:
             return {
                 'success': True,
                 'data': {
                     'order': OrderSerializer(order).data,
                     'payment': PaymentSerializer(latest_payment).data,
-                    'status': utils.paymentConstants.PaymentStatus.SUCCESS
+                    'status': PaymentStatus.SUCCESS
                 },
                 'message': "Order is already paid"
             }
@@ -78,10 +78,10 @@ class CheckoutService:
         # Verify current payment status first
         current_status = verify_transaction_status(latest_payment.paystack_reference)
         
-        if current_status == utils.paymentConstants.PaymentStatus.SUCCESS:
+        if current_status == PaymentStatus.SUCCESS:
             # Payment already succeeded, update local record
             latest_payment.is_processed = True
-            latest_payment.status = utils.paymentConstants.PaymentStatus.SUCCESS
+            latest_payment.status = PaymentStatus.SUCCESS
             latest_payment.save()
             
             return {
@@ -89,13 +89,13 @@ class CheckoutService:
                 'data': {
                     'order': OrderSerializer(order).data,
                     'payment': PaymentSerializer(latest_payment).data,
-                    'status': utils.paymentConstants.PaymentStatus.SUCCESS
+                    'status': PaymentStatus.SUCCESS
                 },
                 'message': 'Payment already completed'
             }
         
         # if the payment is pending return the existing URL
-        if current_status == utils.paymentConstants.PaymentStatus.PENDING:
+        if current_status == PaymentStatus.PENDING:
             authorization_url = getattr(latest_payment, 'authorization_url', None)
             return {
                 'success': True,
@@ -104,7 +104,7 @@ class CheckoutService:
                     'payment_url': authorization_url,
                     'reference': latest_payment.paystack_reference,
                     'retry_count': current_retry_count,
-                    'status': utils.paymentConstants.PaymentStatus.PENDING
+                    'status': PaymentStatus.PENDING
                 },
                 'message': 'Payment still pending. Please complete the existing payment.'
             }
@@ -132,7 +132,7 @@ class CheckoutService:
                         # If it exists, check if it's still valid or needs updating
                         if reservation.status != Reservation.Status.ACTIVE or reservation.is_expired():
                             # Re-verify stock availability before re-activating
-                            available = product.available_stock()
+                            available = product.available_stock
                             if available < item.quantity:
                                 raise ValueError(f'Sorry, {product.item_no} is now out of stock and cannot be retried.')
                             reservation.status = Reservation.Status.ACTIVE
@@ -140,7 +140,7 @@ class CheckoutService:
                             reservation.save()
                     else:
                         # New reservation created, check available stock
-                        available = product.available_stock()
+                        available = product.available_stock
                         if available < item.quantity:
                             raise Exception(f'Insufficient stock for product {product.item_no}.')
                         # reservation was already created with ACTIVE status and default expiry in defaults or Meta
@@ -175,13 +175,13 @@ class CheckoutService:
             new_payment = Payment.objects.create(
                         order=order,
                         amount=latest_payment.amount,
-                        status=utils.paymentConstants.PaymentStatus.PENDING,
+                        status=PaymentStatus.PENDING,
                         paystack_reference=paystack_response['data']['reference'],
                         authorization_url=paystack_response['data']['authorization_url'],
                         retry_count=new_retry_count,
                         last_retry_at = timezone.now()
                     )
-            latest_payment.status = utils.paymentConstants.PaymentStatus.FAILED
+            latest_payment.status = PaymentStatus.FAILED
             latest_payment.save()
             
             logger.info(f"New Payment issued for order #{order_id}")
@@ -193,7 +193,7 @@ class CheckoutService:
                     'payment_url': paystack_response['data']['authorization_url'],
                     'reference': paystack_response['data']['reference'],
                     'retry_count': new_retry_count,
-                    'status': utils.paymentConstants.PaymentStatus.PENDING
+                    'status': PaymentStatus.PENDING
                 },
                 'message': f'New Payment issued for order #{order_id}'
             }
@@ -308,7 +308,7 @@ class CheckoutService:
                 product = Product.objects.select_for_update().get(pk=item.product.pk)
             
                 # Check AVAILABLE stock (real stock minus active reservations)
-                available = product.available_stock()
+                available = product.available_stock
                 if available < item.quantity:
                     raise Exception(
                         f'Insufficient stock for product {product.item_no}. '
@@ -409,7 +409,7 @@ class CheckoutService:
         payment = Payment.objects.create(
             order=order,
             amount=amount,
-            status=utils.paymentConstants.PaymentStatus.PENDING,
+            status=PaymentStatus.PENDING,
             paystack_reference=data['data']['reference'],
             authorization_url=data['data']['authorization_url']
         )

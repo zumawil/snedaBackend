@@ -45,7 +45,7 @@ class Order(models.Model):
     
     # Alert admins to review the order
     marked_for_review = models.BooleanField(default=False)
-    approved = models.BooleanField(null=True)
+    approved = models.BooleanField(null=True, blank=True)
 
     def __str__(self):
         return f"order {self.order_id} for {self.user.email}"
@@ -134,15 +134,10 @@ class Order(models.Model):
         """Restores stock for a cancelled order and optionally triggers a refund."""
         with transaction.atomic():
             # 1. Determine if a refund is needed
-            needs_refund = trigger_refund and self.status == Status.PAID
-            refund_successful = False
-            
-            # 2. Attempt refund first (if needed)
+            needs_refund = trigger_refund and self.status == OrderStatus.PAID
             new_status = OrderStatus.CANCELLED
-            needs_refund = self.status == OrderStatus.PAID
-            new_status = OrderStatus.CANCELLED
-            refund_successful = False
             payment = None
+            refund_successful = False
 
             if needs_refund:
                 payment = self.payments.filter(status='success', is_processed=True).first()

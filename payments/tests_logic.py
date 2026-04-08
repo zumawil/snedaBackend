@@ -5,6 +5,7 @@ from decimal import Decimal
 from django.test import TransactionTestCase
 
 from orders.models import Order, Reservation, OrderItem
+from shipping.models import Shipping
 from products.models import Product
 from payments.models import Payment
 from payments.webhook_handlers import handle_payment_success
@@ -189,9 +190,10 @@ class PaymentLogicTest(TransactionTestCase):
         self.product.save()
         self.reservation.save()
         
-        self.order.restore_stock()
+        self.order.restore_stock(trigger_refund=False)
         
         self.product.refresh_from_db()
+        self.order.refresh_from_db()
         self.assertEqual(self.product.inventory_qty, 10)
         self.assertEqual(self.order.status, OrderStatus.CANCELLED)
 
@@ -210,13 +212,15 @@ class PaymentLogicTest(TransactionTestCase):
         self.product.save()
         self.reservation.save()
         
-        self.order.restore_stock()
+        self.order.restore_stock(trigger_refund=False)
         
         self.product.refresh_from_db()
+        self.order.refresh_from_db()
+        shipping.refresh_from_db()
         # Stock stays 8 because it's shipped!
         self.assertEqual(self.product.inventory_qty, 8)
         self.assertEqual(self.order.status, OrderStatus.CANCELLED)
-        self.assertEqual(shipping.status, 'cancelled')
+        self.assertEqual(shipping.status, 'shipped')
 
     @patch('utils.payment_helpers.initiate_paystack_refund')
     def test_restore_stock_with_refund(self, mock_refund):

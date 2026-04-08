@@ -683,13 +683,6 @@ class AdminOrderCancelView(APIView):
             status_code=status.HTTP_200_OK
         )
 
-        return api_response(
-            success=True,
-            data={"job_id": job.id},
-            message="Order cancelled successfully and stock restored",
-            status_code=status.HTTP_200_OK
-        )
-
 # ============================================================================
 # PRODUCT MANAGEMENT
 # ============================================================================

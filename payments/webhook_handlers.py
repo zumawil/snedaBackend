@@ -82,7 +82,7 @@ def handle_payment_success(reference, order_id):
                     is_actually_expired = timezone.now() > grace_expiry
                     
                     if is_actually_expired or reservation.status == Reservation.Status.EXPIRED:
-                        available = reservation.product.available_stock()
+                        available = reservation.product.available_stock
                         if available < reservation.quantity:
                                 logger.critical(
                                     f"STOCK OVERSELL: Order {order.id} paid for {reservation.product.item_no} "

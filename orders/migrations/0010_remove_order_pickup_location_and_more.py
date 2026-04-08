@@ -58,20 +58,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(update_order_statuses, reverse_code=reverse_order_statuses),
-        migrations.RemoveField(
-            model_name='order',
-            name='pickup_location',
-        ),
-        migrations.RemoveField(
-            model_name='order',
-            name='shipping_address',
-        ),
-        migrations.AlterField(
-            model_name='order',
-            name='status',
-            field=models.CharField(choices=[('pending', 'Pending'), ('paid', 'Paid'), ('cancelled', 'Cancelled'), ('refunded', 'Refunded')], default='pending', max_length=20),
-        ),
         migrations.CreateModel(
             name='PickupFulfillment',
             fields=[
@@ -87,4 +73,19 @@ class Migration(migrations.Migration):
                 ('picked_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='picked_orders', to=settings.AUTH_USER_MODEL)),
             ],
         ),
+        migrations.RunPython(update_order_statuses, reverse_code=reverse_order_statuses),
+        migrations.RemoveField(
+            model_name='order',
+            name='pickup_location',
+        ),
+        migrations.RemoveField(
+            model_name='order',
+            name='shipping_address',
+        ),
+        migrations.AlterField(
+            model_name='order',
+            name='status',
+            field=models.CharField(choices=[('pending', 'Pending'), ('paid', 'Paid'), ('cancelled', 'Cancelled'), ('refunded', 'Refunded')], default='pending', max_length=20),
+        ),
     ]
+
