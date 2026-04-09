@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Sum, Count
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.db.models import F
 from django.db import transaction
 from admin_panel.tasks import (
@@ -296,8 +296,33 @@ class AdminOrderListView(APIView):
             # Support filtering by status and search
             order_status = request.query_params.get('status', None)
             search_query = request.query_params.get('search', None)
-            start_date = request.query_params.get('start_date', None)
-            end_date = request.query_params.get('end_date', None)
+            start_date_str = request.query_params.get('start_date', None)
+            end_date_str = request.query_params.get('end_date', None)
+            
+            parsed_start_date = None
+            parsed_end_date = None
+
+            if start_date_str:
+                try:
+                    parsed_start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return api_response(
+                        success=False,
+                        error="Invalid start_date format",
+                        message="start_date must be in YYYY-MM-DD format",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if end_date_str:
+                try:
+                    parsed_end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return api_response(
+                        success=False,
+                        error="Invalid end_date format",
+                        message="end_date must be in YYYY-MM-DD format",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
             orders = Order.objects.all().order_by('-created_at')
             
             if order_status:
@@ -329,10 +354,10 @@ class AdminOrderListView(APIView):
                     conditions |= Q(id=search_query)
                 orders = orders.filter(conditions)
                 
-            if start_date:
-                orders = orders.filter(created_at__date__gte=start_date)
-            if end_date:
-                orders = orders.filter(created_at__date__lte=end_date)
+            if parsed_start_date:
+                orders = orders.filter(created_at__date__gte=parsed_start_date)
+            if parsed_end_date:
+                orders = orders.filter(created_at__date__lte=parsed_end_date)
             
             paginator = self.pagination_class()
             result_page = paginator.paginate_queryset(orders, request)
@@ -445,15 +470,16 @@ class AdminUpdateOrderStatusView(APIView):
                     pickup.status = normalized_status
                     pickup.save()
             else:
-                if not hasattr(order, 'shipping'):
+                shipping = getattr(order, 'shipping', None)
+                if not shipping:
                     return api_response(
                         success=False,
                         error="No shipping record",
                         message="Order has no shipping record",
                         status_code=status.HTTP_400_BAD_REQUEST
                     )
-                order.shipping.status = normalized_status
-                order.shipping.save()
+                shipping.status = normalized_status
+                shipping.save()
         except Exception as e:
             return api_response(
                 success=False,
@@ -675,6 +701,7 @@ class AdminOrderCancelView(APIView):
 
                 # Mark order.approved as False immediately
                 order.approved = False
+                order.save(update_fields=['approved'])
                 
                 # Perform DB-side stock and state reversals
                 needs_refund, payment = order.prepare_stock_restore()

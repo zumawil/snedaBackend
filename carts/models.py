@@ -1,4 +1,6 @@
 from django.db import models
+from django.db.models import Q
+from django.core.exceptions import ValidationError
 from users.models import CustomUser as User
 from products.models import Product
 from orders.models import Order
@@ -44,3 +46,25 @@ class CheckoutAttempt(models.Model):
     address = models.TextField(null=True, blank=True)  # Delivery address
     pickup_location = models.CharField(max_length=255, null=True, blank=True)  # Pickup location choice
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    (Q(address__isnull=False) & Q(pickup_location__isnull=True)) |
+                    (Q(address__isnull=True) & Q(pickup_location__isnull=False))
+                ),
+                name='exactly_one_fulfillment_target'
+            )
+        ]
+
+    def clean(self):
+        """Ensure exactly one of address or pickup_location is set."""
+        if not self.address and not self.pickup_location:
+            raise ValidationError("Exactly one of address or pickup_location must be provided.")
+        if self.address and self.pickup_location:
+            raise ValidationError("Only one of address or pickup_location can be provided.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

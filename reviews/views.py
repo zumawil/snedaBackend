@@ -72,8 +72,8 @@ class ReviewListCreateView(ListCreateAPIView):
         return api_response(
             success=False,
             data=None,
-            error="Validation failed",
-            message=serializer.errors,
+            error=serializer.errors,
+            message="Validation failed",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -112,8 +112,8 @@ class ReviewDetailView(RetrieveUpdateDestroyAPIView):
         return api_response(
             success=False,
             data=None,
-            error="Validation failed",
-            message=serializer.errors,
+            error=serializer.errors,
+            message="Validation failed",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
