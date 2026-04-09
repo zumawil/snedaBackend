@@ -29,7 +29,11 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-*!@9oayqjy43r1r6ga$h05z6w_7u1pxlyq5pyr&uxzkcdgc&+i')
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY and not DEBUG:
+    raise ValueError("SECRET_KEY must be set in production environments.")
+# FALLBACK FOR DEV ONLY
+SECRET_KEY = SECRET_KEY or 'django-insecure-*!@9oayqjy43r1r6ga$h05z6w_7u1pxlyq5pyr&uxzkcdgc&+i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
@@ -99,9 +103,10 @@ AUTH_USER_MODEL = "users.CustomUser"
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # serving static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -132,14 +137,21 @@ WSGI_APPLICATION = 'snedaEcommerceAPI.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.sqlite3'),
-        'NAME': os.environ.get('DB_NAME', str(BASE_DIR / 'db.sqlite3')),
-        'USER': os.environ.get('DB_USER', ''),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', ''),
-        'PORT': os.environ.get('DB_PORT', ''),
+        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.postgresql'), # Default to Postgres for Prod
+        'NAME': os.environ.get('DB_NAME', 'sneda_ecommerce'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
+
+# Fallback to SQLite only if explicitly requested or in dev without DB_ENGINE
+if DEBUG and not os.environ.get('DB_ENGINE') and not os.environ.get('DB_HOST'):
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 
 # Cache Config (Redis)
 CACHES = {
@@ -197,6 +209,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+# Enable WhiteNoise compression and caching for static files
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -231,19 +253,27 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 
 # HSTS & SSL Settings (Only for HTTPS/Production)
-if os.environ.get('DJANGO_DEBUG', 'False').lower() == 'false':
+# HSTS & SSL Settings (Only for HTTPS/Production)
+if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() == 'true'
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 else:
+    SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+    
+# Environmental overrides for special cases
+SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', str(SESSION_COOKIE_SECURE)).lower() == 'true'
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', str(CSRF_COOKIE_SECURE)).lower() == 'true'
 
 SESSION_COOKIE_HTTPONLY = True
 # CSRF_COOKIE_HTTPONLY is False as per existing requirement for SPA to read token
+CSRF_COOKIE_HTTPONLY = False # we need JS to read csrftoken cookie (so False)
+CSRF_COOKIE_SAMESITE = "Lax" # or "Strict" or "None" (with Secure)
 
 # JWT SETTINGS
 SIMPLE_JWT = {
@@ -256,12 +286,6 @@ SIMPLE_JWT = {
 # CORS: frontend must be allowed to send cookies
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',') if origin.strip()]
 CORS_ALLOW_CREDENTIALS = True # allow cookies to be sent
-
-# CSRF / cookie-related (tweak for prod)
-CSRF_COOKIE_HTTPONLY = False # we need JS to read csrftoken cookie (so False)
-CSRF_COOKIE_SAMESITE = "Lax" # or "Strict" or "None" (with Secure)
-CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False').lower() == 'true' # set True in production (HTTPS)
-SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
 
 # Swagger settings
 SWAGGER_SETTINGS = {
