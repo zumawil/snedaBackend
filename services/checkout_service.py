@@ -122,30 +122,33 @@ class CheckoutService:
                     product = Product.objects.select_for_update().get(pk=item.product.pk)
                     
                     # Check if reservation already exists
-                    reservation, created = Reservation.objects.get_or_create(
-                        order=order,
-                        product=product,
-                        defaults={'quantity': item.quantity}
-                    )
+                    reservation = Reservation.objects.filter(order=order, product=product).first()
                     
-                    if not created:
+                    if reservation:
                         # If it exists, check if it's still valid or needs updating
                         if reservation.status != Reservation.Status.ACTIVE or reservation.is_expired():
                             # Re-verify stock availability before re-activating
+                            # Since it's currently EXPIRED or INACTIVE, it's not and shouldn't be in available_stock yet
                             available = product.available_stock
                             if available < item.quantity:
                                 raise ValueError(f'Sorry, {product.item_no} is now out of stock and cannot be retried.')
+                            
                             reservation.status = Reservation.Status.ACTIVE
                             reservation.expires_at = timezone.now() + timedelta(minutes=15)
                             reservation.save()
                     else:
-                        # New reservation created, check available stock
+                        # NEW reservation: Check available stock BEFORE creating it
                         available = product.available_stock
                         if available < item.quantity:
-                            raise Exception(f'Insufficient stock for product {product.item_no}.')
-                        # reservation was already created with ACTIVE status and default expiry in defaults or Meta
-                        # but let's be explicit if needed.
-                        pass
+                            raise ValueError(f'Insufficient stock for product {product.item_no}.')
+                        
+                        Reservation.objects.create(
+                            order=order,
+                            product=product,
+                            quantity=item.quantity,
+                            status=Reservation.Status.ACTIVE,
+                            expires_at=timezone.now() + timedelta(minutes=15)
+                        )
 
         except ValueError as e:
             logger.error(f"Stock failure retrying payment for order #{order_id}: {str(e)}")
@@ -314,7 +317,7 @@ class CheckoutService:
                 # Check AVAILABLE stock (real stock minus active reservations)
                 available = product.available_stock
                 if available < item.quantity:
-                    raise Exception(
+                    raise ValueError(
                         f'Insufficient stock for product {product.item_no}. '
                         f'Available: {available}, Requested: {item.quantity}'
                     )

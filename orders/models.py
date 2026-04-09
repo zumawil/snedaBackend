@@ -1,5 +1,5 @@
 from django.db import models, transaction
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
 from products.models import Product
 from users.models import CustomUser as User
 from django.utils import timezone
@@ -130,88 +130,101 @@ class Order(models.Model):
             }
         return {"type": "unknown", "status": self.status}
 
-    def restore_stock(self, trigger_refund=True):
-        """Restores stock for a cancelled order and optionally triggers a refund."""
-        with transaction.atomic():
-            # 1. Determine if a refund is needed
-            needs_refund = trigger_refund and self.status == OrderStatus.PAID
-            new_status = OrderStatus.CANCELLED
-            payment = None
-            refund_successful = False
+    def prepare_stock_restore(self):
+        """
+        DB-side stock restoration and state changes.
+        Should be called inside a transaction with select_for_update.
+        Returns: (needs_refund, payment)
+        """
+        # 1. Determine if a refund is needed
+        needs_refund = self.status == OrderStatus.PAID
+        payment = None
 
-            if needs_refund:
-                payment = self.payments.filter(status='success', is_processed=True).first()
-                if not payment or not payment.paystack_reference:
-                    logger.warning(f"Refund needed for order {self.order_id} but no valid payment found.")
-                    self.marked_for_review = True
-                    self.status = OrderStatus.CANCELLATION_PENDING
-                    self.save(update_fields=['marked_for_review', 'status'])
-                    return # Exit: Requires manual review
+        if needs_refund:
+            payment = self.payments.filter(status='success', is_processed=True).first()
+            if not payment or not payment.paystack_reference:
+                logger.warning(f"Refund needed for order {self.order_id} but no valid payment found.")
+                self.marked_for_review = True
+                self.status = OrderStatus.CANCELLATION_PENDING
+                self.save(update_fields=['marked_for_review', 'status'])
+                return False, None
 
-            # 2. Call external refund outside TRANSACTION (if possible)
-            # Note: Caller should ideally NOT be in an atomic block here.
-            if needs_refund and payment:
-                from utils.payment_helpers import initiate_paystack_refund
-                success, message = initiate_paystack_refund(payment.paystack_reference, payment.amount)
-                if success:
-                    refund_successful = True
-                    new_status = OrderStatus.REFUNDED
-                    logger.info(f"Refund issued for order {self.order_id}")
-                else:
-                    logger.error(f"Refund failed for order {self.order_id}: {message}")
-                    self.marked_for_review = True
-                    self.status = OrderStatus.CANCELLATION_PENDING
-                    self.save(update_fields=['marked_for_review', 'status'])
-                    return # Exit: Refund failed, stop here.
+        # 2. Cancel active/confirmed reservations
+        active_reservations = self.reservations.filter(status=Reservation.Status.ACTIVE)
+        active_reservations.update(status=Reservation.Status.CANCELLED)
+
+        can_restore_physical = True
+        
+        # Preserve audit trail for handoff-complete states
+        if hasattr(self, 'shipping') and self.shipping:
+            if self.shipping.status in ['shipped', 'delivered']:
+                can_restore_physical = False
+                logger.warning(f"Order {self.id}: Stock NOT restored - already shipped/delivered")
             else:
-                # No refund needed
-                refund_successful = True
+                self.shipping.status = 'cancelled'
+                self.shipping.save(update_fields=['status'])
+        
+        if hasattr(self, 'pickup_fulfillment') and self.pickup_fulfillment:
+            if self.pickup_fulfillment.status == 'completed':
+                can_restore_physical = False
+                logger.warning(f"Order {self.id}: Stock NOT restored - pickup already completed")
+            else:
+                self.pickup_fulfillment.status = 'cancelled'
+                self.pickup_fulfillment.save(update_fields=['status'])
 
-            # 3. Finalize restoration (Atomic)
-            with transaction.atomic():
-                # Re-fetch with lock for final updates
-                order = Order.objects.select_for_update().get(pk=self.pk)
-                
-                # Double check status to avoid race conditions
-                if order.status == OrderStatus.CANCELLED or order.status == OrderStatus.REFUNDED:
-                    return
-
-                # Cancel active/confirmed reservations
-                active_reservations = order.reservations.filter(status=Reservation.Status.ACTIVE)
-                active_reservations.update(status=Reservation.Status.CANCELLED)
-
-                can_restore_physical = True
-                
-                # Preserve audit trail for handoff-complete states
-                if hasattr(order, 'shipping') and order.shipping:
-                    if order.shipping.status in ['shipped', 'delivered']:
-                        can_restore_physical = False
-                        logger.warning(f"Order {order.id}: Stock NOT restored - already shipped/delivered")
-                    else:
-                        order.shipping.status = 'cancelled'
-                        order.shipping.save(update_fields=['status'])
-                
-                if hasattr(order, 'pickup_fulfillment') and order.pickup_fulfillment:
-                    if order.pickup_fulfillment.status == 'completed':
-                        can_restore_physical = False
-                        logger.warning(f"Order {order.id}: Stock NOT restored - pickup already completed")
-                    else:
-                        order.pickup_fulfillment.status = 'cancelled'
-                        order.pickup_fulfillment.save(update_fields=['status'])
-
-                if can_restore_physical:
-                    confirmed_res = order.reservations.filter(status=Reservation.Status.CONFIRMED)
-                    for res in confirmed_res:
-                        Product.objects.filter(pk=res.product.pk).update(
-                            inventory_qty=models.F('inventory_qty') + res.quantity
-                        )
-                        res.status = Reservation.Status.CANCELLED
-                        res.save()
-                
-                order.status = new_status
-                order.save(update_fields=['status'])
+        if can_restore_physical:
+            confirmed_res = self.reservations.filter(status=Reservation.Status.CONFIRMED)
+            for res in confirmed_res:
+                Product.objects.filter(pk=res.product.pk).update(
+                    inventory_qty=models.F('inventory_qty') + res.quantity
+                )
+                res.status = Reservation.Status.CANCELLED
+                res.save()
+        
+        # Initially set status to CANCELLED if no refund needed
+        # if user never made payment
+        if not needs_refund:
+            self.status = OrderStatus.CANCELLED
+            self.save(update_fields=['status'])
             
-            logger.info(f"Order {self.order_id} set to {new_status}")
+        return needs_refund, payment
+
+    def perform_refund(self, payment):
+        """
+        Handles the external Paystack refund call.
+        """
+        if not payment:
+            return False, "No payment provided"
+
+        from utils.payment_helpers import initiate_paystack_refund
+        success, message = initiate_paystack_refund(payment.paystack_reference, payment.amount)
+        
+        # Update status based on refund result
+        with transaction.atomic():
+            # Lock again for final update
+            order = Order.objects.select_for_update().get(pk=self.pk)
+            if success:
+                order.status = OrderStatus.REFUNDED
+                logger.info(f"Refund issued for order {order.order_id}")
+            else:
+                logger.error(f"Refund failed for order {order.order_id}: {message}")
+                order.marked_for_review = True
+                order.status = OrderStatus.CANCELLATION_PENDING
+            order.save(update_fields=['status', 'marked_for_review'])
+            
+        return success, message
+
+    def restore_stock(self, trigger_refund=True):
+        """Backward compatible wrapper for automated restoration."""
+        with transaction.atomic():
+            order = Order.objects.select_for_update().get(pk=self.pk)
+            needs_refund, payment = order.prepare_stock_restore()
+        
+        if trigger_refund and needs_refund and payment:
+            self.perform_refund(payment)
+        elif not needs_refund:
+            logger.info(f"Order {self.order_id} restored and cancelled (no refund needed)")
+
 
     def is_cancellable(self):
         """Return True if order can be cancelled"""
@@ -327,8 +340,12 @@ class PickupFulfillment(models.Model):
             raise ValidationError("Can only create PickupFulfillment for pickup orders (is_pickup=True)")
         
         # Ensure no shipping exists for this order
-        if self.order and hasattr(self.order, 'shipping'):
-            raise ValidationError("Order already has shipping record. Cannot have both pickup and shipping.")
+        if self.order:
+            try:
+                _ = self.order.shipping
+                raise ValidationError("Order already has shipping record. Cannot have both pickup and shipping.")
+            except ObjectDoesNotExist:
+                pass
 
     def save(self, *args, **kwargs):
         self.full_clean()

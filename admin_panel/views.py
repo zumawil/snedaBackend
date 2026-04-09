@@ -660,53 +660,56 @@ class AdminOrderCancelView(APIView):
         }
     )
     def post(self, request, pk):
-        # 1. Lock order row to ensure consistent state check
-        with transaction.atomic():
-            order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
-
-            if not order.is_cancellable():
-                return api_response(
-                    success=False,
-                    error="Not cancellable",
-                    message=f"Order in status {order.status} cannot be cancelled",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Mark for review/rejection initially
-            order.approved = False
-            order.save(update_fields=['approved'])
-
-        # 2. Run the heavy lifting (includes external refund outside atomic block)
+        # 1. Lock order row and perform DB-side restoration inside ONE atomic block
         try:
-            order.restore_stock()
+            with transaction.atomic():
+                order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
+
+                if not order.is_cancellable():
+                    return api_response(
+                        success=False,
+                        error="Not cancellable",
+                        message=f"Order in status {order.status} cannot be cancelled",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Mark order.approved as False immediately
+                order.approved = False
+                
+                # Perform DB-side stock and state reversals
+                needs_refund, payment = order.prepare_stock_restore()
+                # order.prepare_stock_restore() already handles order.status and order.save()
+
         except Exception as e:
-            logger.exception("Error during restore_stock in AdminOrderCancelView")
+            logger.exception("Error during prepare_stock_restore in AdminOrderCancelView")
             return api_response(
                 success=False,
                 error=str(e),
-                message="Error processing cancellation",
+                message="Error processing DB-side cancellation",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 3. Verify final state before queuing email job
-        if order.status not in [OrderStatus.CANCELLED, OrderStatus.REFUNDED]:
-            return api_response(
-                success=False,
-                error="Incomplete cancellation",
-                message=f"Order is in {order.status} state. Refund may have failed. Please review manually.",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+        # 2. Run external I/O (refund) OUTSIDE the main atomic block
+        if needs_refund and payment:
+            try:
+                success, message = order.perform_refund(payment)
+                if not success:
+                    # perform_refund already marks for review and sets status to cancellation_pending
+                    logger.warning(f"Refund initiation failed for order {order.id}: {message}")
+            except Exception as e:
+                logger.exception(f"Unexpected error during refund for order {order.id}")
+                # We don't return 500 here because the DB restoration already succeeded.
+                # The order is in a consistent (though perhaps intermediate) state.
 
-        # 4. Create the tracking record ONLY on success
-        with transaction.atomic():
-            job = BackgroundJob.objects.create(
-                task_type="send_order_cancelled_email",
-                related_object_type="order",
-                related_object_id=order.id,
-                user=request.user
-            )
+        # 3. Create the tracking record ONLY if DB-side restoration finished
+        job = BackgroundJob.objects.create(
+            task_type="send_order_cancelled_email",
+            related_object_type="order",
+            related_object_id=order.id,
+            user=request.user
+        )
 
-        # 5. Queue the Celery task
+        # 4. Queue the Celery task safely
         def dispatch_task():
             result = send_order_cancelled_email_task.delay(job.id, order.id, request.user.id)
             job.task_id = result.id

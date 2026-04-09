@@ -378,7 +378,7 @@ class OrderCheckoutFlowTestCase(TestCase):
         
         # Verify setup: order has shipping but not pickup yet
         self.assertEqual(order.shipping, shipping)
-        self.assertFalse(hasattr(order, 'pickup_fulfillment'))
+        self.assertIsNone(getattr(order, 'pickup_fulfillment', None))
 
         # Try to also create PickupFulfillment - should raise ValidationError
         # because the order is NOT marked as pickup and already has shipping.
