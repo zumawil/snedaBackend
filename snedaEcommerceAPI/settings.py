@@ -255,7 +255,7 @@ X_FRAME_OPTIONS = 'DENY'
 # HSTS & SSL Settings (Only for HTTPS/Production)
 # HSTS & SSL Settings (Only for HTTPS/Production)
 if not DEBUG:
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_SECONDS = 3600 # 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() == 'true'
