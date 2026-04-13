@@ -4,7 +4,7 @@ from .views import ( SignupUser, CookieJWTLoginView,
                     CookieTokenRefreshView,
                     VerifyOTPView, RequestOTPView, UserProfileView, LogoutUserView,
                     ChangePasswordRequestView, ResetPasswordConfirmView, ResetPasswordView,
-                     GetUsersView, GetUserSession, SearchUsers)
+                     GetUsersView, GetUserSession, SearchUsers, GuessSessionView)
 
 urlpatterns = [
     path("signup/", SignupUser.as_view(), name="signup"),
@@ -23,5 +23,8 @@ urlpatterns = [
     path('reset-password/', ResetPasswordView.as_view(), name="reset_passsord"),
     path('reset-password-confirm/', ResetPasswordConfirmView.as_view(), name='confirm_password_reset'),
     path('session/', GetUserSession.as_view(), name='get_user_session'),
-    path('search/', SearchUsers.as_view(), name='search_users')
+    path('search/', SearchUsers.as_view(), name='search_users'),
+
+    # guest views
+    path('guest-session/', GuessSessionView.as_view(), name='guest_session'),
 ]

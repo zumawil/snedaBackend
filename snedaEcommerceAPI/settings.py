@@ -381,7 +381,7 @@ LOGGING = {
         # Root logger: catches all logs from project apps
         "": {
             "handlers": ["console", "file_error", "file_warning"],
-            "level": "INFO",
+            "level": "DEBUG", # chnage to INFO or WARNING in production to reduce noise
         },
         # Django general logs (warnings, errors, anything internal)
         "django": {

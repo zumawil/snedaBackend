@@ -89,7 +89,7 @@ class VerifyOTPView(APIView):
                 secure=not settings.DEBUG,
                 samesite="Lax",
                 max_age=604800,
-                path="/auth/refresh/",
+                path="/",
             )
 
             return response
@@ -336,22 +336,14 @@ class LogoutUserView(APIView):
             message="Logged out successfully",
             status_code=status.HTTP_200_OK
         )
-        if response.cookies.get('access'):
-            response.delete_cookie('access')
-            response.delete_cookie('refresh')
-            return api_response(
-                success=True,
-                message='logged out successfully',
-                status_code=status.HTTP_200_OK
-            )
-        else:
-            return api_response(
-                success=False,
-                data=None,
-                error="No active session",
-                message="User is not logged in",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+        
+        # Always attempt to delete cookies to ensure client state is cleared
+        # Flag settings (path, samesite) must match those used during set_cookie
+        response.delete_cookie("access", path="/", samesite="Lax")
+        response.delete_cookie("refresh", path="/", samesite="Lax")
+        response.delete_cookie("sessionid", path="/", samesite="Lax")
+        
+        return response
 
 
 class RequestOTPView(APIView):
@@ -621,3 +613,84 @@ class SearchUsers(APIView):
             status_code=status.HTTP_200_OK,
             error=True
         )
+
+
+import uuid
+
+class GuessSessionView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'sensitive'
+    authentication_classes = []
+
+    
+    def create_guest_user(self):
+        # generate guest email
+            guest_email = f"guest_{uuid.uuid4().hex}@guest.sneda.local"
+
+            user = CustomUser.objects.create(
+                email=guest_email,
+                is_guest=True,
+                verified=False,
+            )
+            user.set_unusable_password()
+            user.save()
+            
+            return user
+
+    def post(self, request):
+        # check if the user has already visited 
+        existing_guest_id = request.COOKIES.get('guest_id')
+        user_found = False
+
+        if(existing_guest_id):
+            
+            try:
+                user = CustomUser.objects.get (
+                    id=existing_guest_id, 
+                    is_guest=True
+                )
+                user_found = True
+            # there is a possibility user got cleaned by celery beat
+            except CustomUser.DoesNotExist:
+                user = self.create_guest_user()
+                user_found = False
+
+        else:
+            user = self.create_guest_user()
+            user_found = False
+
+        refresh = RefreshToken.for_user(user)
+        refresh['is_guest'] = True  #add custom claim
+        
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = api_response(
+            success=True,
+            data={"guest_session": True, "user found ": user_found},
+            message="Guest session created",
+            status_code=201
+        )
+
+        # set access token
+        response.set_cookie("access", access_token,
+            httponly=True, secure= not settings.DEBUG,
+            samesite="Lax", max_age=7200, path="/")  # 2hrs for guests
+
+        # set refresh token
+        response.set_cookie("refresh", refresh_token,
+            httponly=True, secure= not settings.DEBUG,
+            samesite="Lax", max_age=7200, path="/")  # 2hrs 
+
+        # set guest_id cookie
+        response.set_cookie(
+            "guest_id",
+            str(user.id),    
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="Lax",
+            max_age=60 * 60 * 24 * 30,  # 30 days — survives session expiry
+            path="/",
+        )
+
+        return response

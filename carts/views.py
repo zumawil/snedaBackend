@@ -9,7 +9,7 @@ from .serializer import (
 )
 from rest_framework import status
 from rest_framework import generics
-from users.permissions import IsVerifiedUser
+from users.permissions import IsVerifiedUser, IsVerifiedOrGuest
 from dotenv import load_dotenv
 from utils.apiResponse import api_response
 from services.checkout_service import CheckoutService
@@ -17,6 +17,7 @@ from products.models import Product
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from django.db import transaction
 
 load_dotenv()
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 #  get user cart
 class CartView(APIView):
 
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Get the current user's cart",
@@ -186,8 +187,50 @@ class CheckoutView(APIView):
      create order from cart
      bills the user 
      and retries payment for a failed order
+     gets payload of items from frontend 
     """
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
+
+
+    def get_cart_items_from_payload(self, cart_items_payload, request):
+        """
+        Helper method to convert cart items payload from frontend into a list of CartItem instances.
+        This method validates the payload and ensures that the products exist in the database.
+        """
+        user = request.user
+        cart, _ = Cart.objects.get_or_create(user=user)
+        
+        # prevent duplicate products in the payload
+        seen_product_ids = set()
+        for item in cart_items_payload:
+            item_no = item.get('item_no')
+            if item_no in seen_product_ids:
+                raise ValueError(f"Duplicate product with item_no {item_no} in cart items payload")
+            seen_product_ids.add(item_no)
+
+        with transaction.atomic():
+            for item in cart_items_payload:
+                item_no = item.get('item_no')
+                quantity = item.get('quantity')
+
+                if quantity < 1:
+                    raise ValueError(f"Quantity for item {item_no} must be at least 1")
+                
+                # Validate product existence
+                try:
+                    product = Product.objects.get(pk=item_no)
+                except Product.DoesNotExist:    
+                    raise ValueError(f"Product with ID {item_no} not found")
+                
+                if product.inventory_qty < quantity:
+                    raise ValueError(f"Insufficient stock for product {product.item_no}. Available: {product.inventory_qty}, Requested: {quantity}")
+                
+                # Create cartitem and set add to users cart
+                CartItem.objects.create(
+                    quantity=quantity,
+                    product=product,
+                    cart=cart
+                )
 
     @swagger_auto_schema(
         operation_description="Process checkout - create order from cart and initiate payment",
@@ -221,8 +264,26 @@ class CheckoutView(APIView):
             401: openapi.Response(description="Unauthorized - Authentication required")
         }
     )
+  
+  
     def post(self, request):
         user = request.user
+        items = request.data.get('items', [])
+        
+        if not items:
+            return api_response(
+                success=False,
+                data=None,
+                error="Cart is empty",
+                message="Cannot proceed to checkout with an empty cart",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # This method will validate the items payload add items to user cart
+        #  and ensure that the products
+        #  exist before proceeding with checkout
+        self.get_cart_items_from_payload(items, request)
+
         
         # Payment Retry Flow
         order_id = request.data.get('order_id')
@@ -255,9 +316,10 @@ class CheckoutView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
             
-        address = request.data.get('address')
+        address = request.data.get('address', None)
         pickup = str(request.data.get('pickup', '')).lower() == 'true'
         pickup_location = request.data.get('pickup_location')
+        
         if pickup and not pickup_location:
             return api_response(
                 success=False,
@@ -296,6 +358,8 @@ class AddToCartView(APIView):
             401: openapi.Response(description="Unauthorized - Authentication required")
         }
     )
+
+
     def post(self, request, product_pk):
         # create cart if it doesn't exist for user
         cart, created = Cart.objects.get_or_create(user=request.user)
@@ -520,7 +584,7 @@ class IncrementProductQuantityInCartView(APIView):
 
 # clear all cart
 class ClearCartView(APIView):
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Clear all items from the cart",

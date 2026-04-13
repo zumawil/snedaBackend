@@ -1,15 +1,34 @@
 from rest_framework import serializers
 from .models import Cart, CartItem
-from users.serializers import UserSerializer
+from users.serializers import UserSerializer, CartUserSerializer
 from products.serializers import ProductSerializer
 
 class CartItemSerializer(serializers.ModelSerializer):
     total_price = serializers.SerializerMethodField()
-    product = ProductSerializer(read_only=True)
+    # product = ProductSerializer(read_only=True)
+    product_item_no = serializers.CharField(
+        source='product.item_no', 
+        read_only=True
+    )
+    gross_price = serializers.DecimalField(
+        source='product.gross_price',
+        read_only=True,
+        max_digits=10,
+        decimal_places=2
+    )
+    available_stock = serializers.IntegerField(
+        source='product.inventory_qty',
+        read_only=True
+    )
 
     class Meta:
         model = CartItem
-        fields = ['id', 'quantity', 'product', 'total_price']
+        fields = ['id', 
+                  'quantity', 
+                  'product_item_no', 
+                  'gross_price',
+                  'available_stock', 
+                  'total_price']
 
     def get_total_price(self, obj):
         return obj.get_total_price()
@@ -27,7 +46,7 @@ class CartItemCreateSerializer(serializers.ModelSerializer):
         return value
 
 class CartSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+    user = CartUserSerializer(read_only=True)
     items = CartItemSerializer(many=True, read_only=True)
     class Meta:
         model = Cart

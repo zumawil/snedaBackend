@@ -42,6 +42,18 @@ class UserSerializer(serializers.ModelSerializer):
 
         return user
 
+class CartUserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CustomUser
+        fields = [
+                'email', 
+                "first_name", 
+                "last_name", 
+                "phone_number", 
+                "address", "city"
+            ]
+
 class UserCreateSerializer(serializers.ModelSerializer):
     """Serializer for user registration with proper OpenAPI schema documentation"""
     

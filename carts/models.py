@@ -50,7 +50,7 @@ class CheckoutAttempt(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     (Q(address__isnull=False) & Q(pickup_location__isnull=True)) |
                     (Q(address__isnull=True) & Q(pickup_location__isnull=False))
                 ),
