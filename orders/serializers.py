@@ -2,12 +2,11 @@ from rest_framework import serializers
 from .models import Order, OrderItem, PickupFulfillment, Reservation
 from utils.paymentConstants import OrderStatus
 from users.serializers import UserSerializer
-from products.serializers import ProductSerializer
+from products.serializers import ProductSerializer, SimpleProductSerializer
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    """Serializer for displaying order items"""
-    product = ProductSerializer(read_only=True)
+    product = SimpleProductSerializer(read_only=True)
     total_price = serializers.SerializerMethodField()
 
     class Meta:
@@ -88,11 +87,24 @@ class PickupFulfillmentSerializer(serializers.ModelSerializer):
     def get_display_address(self, obj):
         return obj.get_display_address()
 
+class FlatOrderUserSerializer(serializers.ModelSerializer):
+    """Helper serializer to provide custom field names for user info"""
+    user_phone_number = serializers.CharField(source='phone_number', read_only=True)
+    user_email = serializers.EmailField(source='email', read_only=True)
+    user_first_name = serializers.CharField(source='first_name', read_only=True)
+    user_last_name = serializers.CharField(source='last_name', read_only=True)
+
+    class Meta:
+        from users.models import CustomUser
+        model = CustomUser
+        fields = ['user_phone_number', 'user_email', 'user_first_name', 'user_last_name']
+
 
 class OrderSerializer(serializers.ModelSerializer):
     """Serializer for displaying orders with full details"""
-    user = UserSerializer(read_only=True)
+    user = FlatOrderUserSerializer(read_only=True)
     items = OrderItemSerializer(many=True, read_only=True)
+
     # reservations = ReservationSerializer(many=True, read_only=True)
     payment = serializers.SerializerMethodField()
     effective_status = serializers.SerializerMethodField()
@@ -110,7 +122,6 @@ class OrderSerializer(serializers.ModelSerializer):
             'total_amount',
             'created_at',
             'items',
-            # 'reservations',
             'payment',
             'approved',
             'is_pickup',

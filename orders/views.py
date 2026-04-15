@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
 from shipping.models import Shipping
-from users.permissions import IsAdminUser, IsVerifiedUser
+from users.permissions import IsAdminUser, IsVerifiedUser, IsVerifiedOrGuest
 from django.db.models import F
 from products.models import Product
 from utils.apiResponse import api_response
@@ -32,8 +32,7 @@ class OrderView(APIView):
     GET /orders/: List all orders for the authenticated user.
     GET /orders/<pk>/: Retrieve details of a specific order.
     """
-
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Get all orders for the authenticated user or a specific order by ID",
@@ -338,7 +337,7 @@ class OrderDetailView(APIView):
     GET /orders/detail/: Retrieve detailed information about the authenticated user's orders.
     Returns order details including user information, payment status, and fulfillment status.
     """
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Get detailed order information for the authenticated user",

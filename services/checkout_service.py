@@ -14,8 +14,8 @@ from shipping.generate_shipping_number import generate_tracking_number
 from utils.payment_helpers import bill_user, verify_transaction_status
 from utils.apiResponse import api_response
 from rest_framework import status
-from orders.models import Order, OrderItem, Reservation
-from utils.paymentConstants import OrderStatus, PaymentStatus
+from utils.paymentConstants import OrderStatus, PaymentStatus, PaymentMethod
+from orders.models import Order, OrderItem, Reservation, PickupFulfillment
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +94,19 @@ class CheckoutService:
                 'message': 'Payment already completed'
             }
         
+        # If the latest payment is "Cash on Collection", we don't call Paystack
+        if latest_payment.method == PaymentMethod.CASH:
+            return {
+                'success': True,
+                'data': {
+                    'order': OrderSerializer(order).data,
+                    'payment': latest_payment.id, # Returning ID for convenience
+                    'pay_on_collection': True,
+                    'status': PaymentStatus.PENDING
+                },
+                'message': 'This is a pickup order. Please pay upon collection.'
+            }
+
         # if the payment is pending return the existing URL
         if current_status == PaymentStatus.PENDING:
             authorization_url = getattr(latest_payment, 'authorization_url', None)
@@ -217,11 +230,7 @@ class CheckoutService:
             }
 
     @staticmethod
-    def process_checkout(user, 
-                        idempotency_key, 
-                        address, 
-                        pickup, 
-                        pickup_location=None):
+    def process_checkout(user, idempotency_key, address,pickup,  pickup_location=None, email=None):
         """
         Coordinates the entire checkout process:
         1. Idempotency check & stock reservation (atomic)
@@ -238,17 +247,16 @@ class CheckoutService:
             order, amount = result
             
             # Phase 2: External calls (outside transaction)
-            return CheckoutService._process_payment_and_shipping(user, order, amount)
+            return CheckoutService._process_payment_and_shipping(user, order, amount, email)
             
-        except Cart.DoesNotExist:
+        except ResourceWarning: # Handle possible cart/stock exceptions
              return {
                 'success': False,
-                'error': "Cart not found",
-                'message': "Cart not found for user",
-                'status_code': status.HTTP_404_NOT_FOUND
+                'error': "Checkout failed",
+                'message': "Could not complete checkout",
+                'status_code': status.HTTP_500_INTERNAL_SERVER_ERROR
             }
         except Exception as e:
-            logger.error(f"Error during checkout: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
@@ -257,10 +265,79 @@ class CheckoutService:
             }
 
     @staticmethod
-    def _create_order_and_reserve_stock(user, 
-                                        idempotency_key, 
-                                        address, pickup, 
-                                        pickup_location=None):
+    def process_pickup_checkout(user, idempotency_key, pickup_location):
+        """
+        Coordinates checkout for Pickup orders:
+        1. Idempotency check & stock reservation (atomic)
+        2. Local Fulfillment record creation (skips online payment)
+        """
+        try:
+            # Phase 1: Check idempotency and reserve stock (in transaction)
+            # For pickup, address is always None
+            result = CheckoutService._create_order_and_reserve_stock(
+                user, idempotency_key, address=None, pickup=True, pickup_location=pickup_location
+            )
+            
+            # If it's a dict, it's a response (likely duplicate order)
+            if isinstance(result, dict):
+                return result
+            
+            order, amount = result
+            
+            # Phase 2: Create pickup fulfillment and record "Cash" payment intent
+            return CheckoutService._process_pickup_fulfillment(order, amount, pickup_location)
+            
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'message': "Error during pickup checkout",
+                'status_code': status.HTTP_500_INTERNAL_SERVER_ERROR
+            }
+
+    @staticmethod
+    def _process_pickup_fulfillment(order, amount, pickup_location):
+        """
+        Handles fulfillment record creation for Pay on Pickup orders.
+        """
+        with transaction.atomic():
+            # Create pickup fulfillment record
+            PickupFulfillment.objects.get_or_create(
+                order=order,
+                defaults={'location': pickup_location}
+            )
+
+            # Create a "Cash on Collection" payment record
+            payment, created = Payment.objects.get_or_create(
+                order=order,
+                defaults={
+                    'amount': amount,
+                    'method': PaymentMethod.CASH,
+                    'status': PaymentStatus.PENDING,
+                    'is_processed': False
+                }
+            )
+
+        return {
+            'success': True,
+            'data': {
+                'order': OrderSerializer(order).data,
+                'payment': PaymentSerializer(payment).data,
+                'pay_on_collection': True
+            },
+            'message': "Pickup order created successfully. Please pay upon collection.",
+            'status_code': status.HTTP_201_CREATED
+        }
+        logger.error(f"Error during checkout: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'message': "Error during checkout",
+            'status_code': status.HTTP_500_INTERNAL_SERVER_ERROR
+        }
+
+    @staticmethod
+    def _create_order_and_reserve_stock(user, idempotency_key,  address, pickup, pickup_location=None):
         """
         Phase 1: Atomically check idempotency, create order, and reserve stock.
             Returns: (order, amount) tuple or response dict if order already exists
@@ -278,21 +355,25 @@ class CheckoutService:
                 raise ValueError("Pickup location should not be provided for delivery orders")
 
         with transaction.atomic():
-        # lock rows to prevent race conditions
-            attempt, created = CheckoutAttempt.objects.select_for_update().get_or_create(key=idempotency_key)
-        
-        # If this is a duplicate request, return the existing order
-            if not created and attempt.order:
-                return CheckoutService._handle_existing_order(attempt)
+            # Try to get an existing attempt first (without creating an empty row)
+            try:
+                attempt = CheckoutAttempt.objects.select_for_update().get(key=idempotency_key)
+                # Duplicate request — return the existing order
+                if attempt.order:
+                    return CheckoutService._handle_existing_order(attempt)
+                created = False
+            except CheckoutAttempt.DoesNotExist:
+                attempt = None
+                created = True
 
-        # Lock and fetch cart with items
+            # Lock and fetch cart with items
             cart = Cart.objects.select_for_update().select_related('user').prefetch_related(
                 'items__product'
             ).get(user=user)
-        
-        # Lock cart items to prevent modifications during checkout
+
+            # Lock cart items to prevent modifications during checkout
             items = list(cart.items.select_for_update().all())
-        
+
             if not items:
                 raise Exception("Cart is empty. Please add items before checkout.")
 
@@ -302,12 +383,22 @@ class CheckoutService:
                 status=OrderStatus.PENDING,
                 is_pickup=pickup,
             )
-        
-            # Link order to checkout attempt for idempotency
-            attempt.order = order
-            attempt.address = address
-            attempt.pickup_location = pickup_location
-            attempt.save()
+
+            # Create or update the CheckoutAttempt with fulfillment fields set
+            # upfront so the DB CheckConstraint (exactly_one_fulfillment_target)
+            # is satisfied from the very first INSERT.
+            if created:
+                attempt = CheckoutAttempt.objects.create(
+                    key=idempotency_key,
+                    order=order,
+                    address=address,
+                    pickup_location=pickup_location,
+                )
+            else:
+                attempt.order = order
+                attempt.address = address
+                attempt.pickup_location = pickup_location
+                attempt.save()
 
             # Reserve stock atomically for each item
             for item in items:
@@ -390,13 +481,15 @@ class CheckoutService:
             }
 
     @staticmethod
-    def _process_payment_and_shipping(user, order, amount):
+    def _process_payment_and_shipping(user, order, amount, email=None):
         """
         Phase 2: Process external payment (outside transaction).
         Shipping is now deferred until payment confirmation (webhook).
         """
         # Initiate payment with external provider
-        data = bill_user(amount, user.email, order_id=order.id, retry_count=0)
+        # Use provided email if available (for guests), otherwise use user account email
+        target_email = email if email else user.email
+        data = bill_user(amount, target_email, order_id=order.id, retry_count=0)
 
         if data.get('status') != True:
             # Payment initialization failed - roll back reservation

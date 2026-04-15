@@ -129,3 +129,11 @@ class ProductSerializer(serializers.ModelSerializer):
                   'box_qty', 'inventory_qty', 'available_stock', 'gross_price', 'brand',
                   'created_at', 'updated_at',
                   'images']
+
+
+class SimpleProductSerializer(serializers.ModelSerializer):
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ['item_no', 'brand_name', 'gross_price', 'inventory_qty']

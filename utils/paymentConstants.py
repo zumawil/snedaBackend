@@ -15,6 +15,7 @@ class PaymentMethod:
     USSD = "ussd"
     QR = "qr"
     BANK_TRANSFER = "bank_transfer"
+    CASH = "cash"
 
 class OrderStatus(models.TextChoices):
     PENDING = 'pending', 'Pending'         # System: cart created

@@ -232,6 +232,7 @@ class Order(models.Model):
             return False
         return self.status in [OrderStatus.PENDING, OrderStatus.PAID]
 
+    
     def generate_unique_order_id(self):
         date_str = timezone.now().strftime("%Y%m%d")
         while True:
