@@ -654,12 +654,10 @@ class GuessSessionView(APIView):
     authentication_classes = []
 
     
-    def create_guest_user(self):
+    def create_guest_user(self, email):
         # generate guest email
-            guest_email = f"guest_{uuid.uuid4().hex}@guest.sneda.local"
-
             user = CustomUser.objects.create(
-                email=guest_email,
+                email=email,
                 is_guest=True,
                 verified=False,
             )
@@ -669,26 +667,26 @@ class GuessSessionView(APIView):
             return user
 
     def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return api_response(
+                success=False,
+                data=None,
+                message="Email is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         # check if the user has already visited 
-        existing_guest_id = request.COOKIES.get('guest_id')
-        user_found = False
+        # Handle existing or new guest/user
+        user = CustomUser.objects.filter(email=email).first()
+        user_found = True
 
-        if(existing_guest_id):
-            
-            try:
-                user = CustomUser.objects.get (
-                    id=existing_guest_id, 
-                    is_guest=True
-                )
-                user_found = True
-            # there is a possibility user got cleaned by celery beat
-            except CustomUser.DoesNotExist:
-                user = self.create_guest_user()
-                user_found = False
-
-        else:
-            user = self.create_guest_user()
+        if not user:
+            user = self.create_guest_user(email)
             user_found = False
+        
+        # Always trigger OTP for this flow to ensure identity verification
+        send_user_otp_job(user)
 
         refresh = RefreshToken.for_user(user)
         refresh['is_guest'] = True  #add custom claim
@@ -698,30 +696,35 @@ class GuessSessionView(APIView):
 
         response = api_response(
             success=True,
-            data={"guest_session": True, "user found ": user_found},
-            message="Guest session created",
+            data={
+                "guest_session": True, 
+                "user_found": user_found,
+                "needs_verification": not user.verified,
+                "is_verified_account": user.verified and not user.is_guest
+            },
+            message="Guest session initialized" if not user.verified else "Account recognized. Please verify identity.",
             status_code=201
         )
 
-        # set access token
-        response.set_cookie("access", access_token,
-            httponly=True, secure= not settings.DEBUG,
-            samesite="Lax", max_age=7200, path="/")  # 2hrs for guests
+        # # set access token
+        # response.set_cookie("access", access_token,
+        #     httponly=True, secure= not settings.DEBUG,
+        #     samesite="Lax", max_age=7200, path="/")  # 2hrs for guests
 
-        # set refresh token
-        response.set_cookie("refresh", refresh_token,
-            httponly=True, secure= not settings.DEBUG,
-            samesite="Lax", max_age=7200, path="/")  # 2hrs 
+        # # set refresh token
+        # response.set_cookie("refresh", refresh_token,
+        #     httponly=True, secure= not settings.DEBUG,
+        #     samesite="Lax", max_age=7200, path="/")  # 2hrs 
 
-        # set guest_id cookie
-        response.set_cookie(
-            "guest_id",
-            str(user.id),    
-            httponly=True,
-            secure=not settings.DEBUG,
-            samesite="Lax",
-            max_age=60 * 60 * 24 * 30,  # 30 days — survives session expiry
-            path="/",
-        )
+        # # set guest_id cookie
+        # response.set_cookie(
+        #     "guest_id",
+        #     str(user.id),    
+        #     httponly=True,
+        #     secure=not settings.DEBUG,
+        #     samesite="Lax",
+        #     max_age=60 * 60 * 24 * 30,  # 30 days — survives session expiry
+        #     path="/",
+        # )
 
         return response
