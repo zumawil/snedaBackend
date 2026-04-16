@@ -77,3 +77,46 @@ def verify_transaction_status(reference):
     except requests.exceptions.RequestException as e:
         logger.error(f"Error verifying transaction {reference}: {str(e)}")
         return 'unknown'
+
+def initiate_paystack_refund(reference, amount):
+    """
+    Refund a transaction via Paystack API.
+    Amount should be in normal currency (e.g. GHS).
+    """
+    PAYSTACK_SECRET_KEY = os.getenv('PAYSTACK_SECRET_KEY')
+    url = "https://api.paystack.co/refund"
+    
+    headers = {
+        "Authorization": f"Bearer {PAYSTACK_SECRET_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "transaction": reference,
+        "amount": to_pesewas(amount)
+    }
+    
+    try:
+        response = requests.post(url, json=data, headers=headers, timeout=10)
+        
+        # Handle non-2xx responses before parsing
+        if not response.ok:
+            logger.error(f"Paystack refund failed with status {response.status_code}: {response.text}")
+            return False, f"Paystack API error: {response.status_code}"
+
+        # Handle potential JSON parsing failures
+        try:
+            res_data = response.json()
+        except (requests.exceptions.JSONDecodeError, ValueError):
+            logger.error(f"Paystack refund returned invalid JSON: {response.text}")
+            return False, "Invalid JSON response from Paystack"
+            
+        if res_data.get('status'):
+            return True, "Refund processed successfully"
+        else:
+            logger.error(f"Paystack refund business logic failure: {res_data.get('message')}")
+            return False, res_data.get('message', 'Unknown Paystack error')
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Paystack refund network error: {str(e)}")
+        return False, f"Network error: {str(e)}"

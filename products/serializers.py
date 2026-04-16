@@ -115,17 +115,25 @@ class ProductImageCreateSerializer(serializers.ModelSerializer):
 
 #  serializer for retrieving product details
 class ProductSerializer(serializers.ModelSerializer):
-    reviews = ReviewsSerializer(many=True, read_only=True)
     images = ProductImageSerializer(many=True, read_only=True)
     product_group = ProductGroupSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
     hs_code = HSCodeSerializer(read_only=True)
     brand = BrandSerializer(read_only=True)
+    available_stock = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Product
         fields = ['item_no', 'product_group', 'category',
                   'hs_code', 'gtin', 'height', 'width', 'length', 'weight',
-                  'box_qty', 'inventory_qty', 'gross_price', 'brand',
+                  'box_qty', 'inventory_qty', 'available_stock', 'gross_price', 'brand',
                   'created_at', 'updated_at',
-                  'images', 'reviews']
+                  'images']
+
+
+class SimpleProductSerializer(serializers.ModelSerializer):
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ['item_no', 'brand_name', 'gross_price', 'inventory_qty']

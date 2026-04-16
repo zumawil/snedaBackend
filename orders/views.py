@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from .models import Order, OrderItem
 from shipping.models import Shipping
-from users.permissions import IsAdminUser, IsVerifiedUser
+from users.permissions import IsAdminUser, IsVerifiedUser, IsVerifiedOrGuest
 from django.db.models import F
 from products.models import Product
 from utils.apiResponse import api_response
@@ -32,8 +32,7 @@ class OrderView(APIView):
     GET /orders/: List all orders for the authenticated user.
     GET /orders/<pk>/: Retrieve details of a specific order.
     """
-
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Get all orders for the authenticated user or a specific order by ID",
@@ -71,10 +70,11 @@ class OrderView(APIView):
                     status_code=status.HTTP_200_OK
                 )
         except Exception as e:
+            logger.exception("Error retrieving orders: %s", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error retrieving orders",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
@@ -132,10 +132,11 @@ class OrderItemView(APIView):
                     status_code=status.HTTP_200_OK
                 )
         except Exception as e:
+            logger.exception("Error retrieving order items: %s", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error retrieving order items",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -219,10 +220,11 @@ class OrderItemView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
+            logger.exception("Error updating order item %s: %s", pk, e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error updating order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -250,10 +252,11 @@ class OrderItemView(APIView):
                 status_code=status.HTTP_204_NO_CONTENT
             )
         except Exception as e:
+            logger.exception("Error deleting order item %s: %s", pk, e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error deleting order item",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
@@ -291,23 +294,14 @@ class OrderCancelView(APIView):
             order = get_object_or_404(Order, pk=pk, user=request.user)
             # use effective_status (shipping-derived when present) to decide
             current_status = order.effective_status
-            if current_status == "pending":
-                # Restore stock for each order item
-                for item in order.items.all():
-                    Product.objects.filter(
-                        id=item.product.id
-                    ).update(stock=F('stock') + item.quantity)
-                # cancel any linked shipping record if present
-                if hasattr(order, 'shipping') and order.shipping:
-                    # logger.info(f"Cancelling shipping for order {order.id}")
-                    order.shipping.status = 'cancelled'
-                    order.shipping.save()
-                    # logger.info(f"Shipping cancelled for order {order.id}")
-                # nothing to write to Order model; shipping holds the state
+            if current_status in ["pending", "paid", "fulfilled"]:
+                # The restore_stock logic safely handles reservations, cancellation, shipping, and refunds.
+                order.restore_stock(trigger_refund=True)
+                
                 return api_response(
                     success=True,
                     data=None,
-                    message="Order cancelled successfully",
+                    message="Order cancelled successfully. Refunds will process if applicable.",
                     status_code=status.HTTP_200_OK
                 )
             elif current_status == 'cancelled':
@@ -327,11 +321,12 @@ class OrderCancelView(APIView):
                     status_code=status.HTTP_400_BAD_REQUEST
                 )
         except Exception as e:
+            logger.exception("Error during order cancellation for order %s: %s", pk, e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
-                message="Error cancelling order",
+                error="Internal server error",
+                message="Unable to process cancellation or refund at this time",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
@@ -342,7 +337,7 @@ class OrderDetailView(APIView):
     GET /orders/detail/: Retrieve detailed information about the authenticated user's orders.
     Returns order details including user information, payment status, and fulfillment status.
     """
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Get detailed order information for the authenticated user",
@@ -367,10 +362,11 @@ class OrderDetailView(APIView):
                 status_code=status.HTTP_200_OK
             )
         except Exception as e:
+            logger.exception("Error retrieving order details: %s", e)
             return api_response(
                 success=False,
                 data=None,
-                error=str(e),
+                error="Internal server error",
                 message="Error retrieving order details",
                 status_code=status.HTTP_400_BAD_REQUEST
             )

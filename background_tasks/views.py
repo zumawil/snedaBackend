@@ -13,8 +13,6 @@ def is_valid_uuid(val : str) -> bool:
         return False
 
 class GetJobStatus(APIView):
-    permission_classes = []
-    authentication_classes = []
 
     def get(self, request):
         job_id = request.GET.get("job_id")

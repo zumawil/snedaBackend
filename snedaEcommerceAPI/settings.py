@@ -29,7 +29,11 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-*!@9oayqjy43r1r6ga$h05z6w_7u1pxlyq5pyr&uxzkcdgc&+i')
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY and not DEBUG:
+    raise ValueError("SECRET_KEY must be set in production environments.")
+# FALLBACK FOR DEV ONLY
+SECRET_KEY = SECRET_KEY or 'django-insecure-*!@9oayqjy43r1r6ga$h05z6w_7u1pxlyq5pyr&uxzkcdgc&+i'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
@@ -84,9 +88,13 @@ CELERY_TASK_ACKS_LATE = True          # only ack after the task completes
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1 # one task per worker at a time (safer for payment work)
 # celery beat schedule
 CELERY_BEAT_SCHEDULE = {
-    'expire-reservations-every-minute': {
+    'expire-reservations-every-15-minutes': {
         'task': 'products.tasks.expire_reservations',
-        'schedule': crontab(minute='*/1'),
+        'schedule': crontab(minute='*/15'),
+    },
+    'cancel-unpaid-orders-every-30-minutes': {
+        'task': 'orders.tasks.cancel_unpaid_orders',
+        'schedule': crontab(minute='*/30'),
     },
 }
 # Custom user model
@@ -95,9 +103,10 @@ AUTH_USER_MODEL = "users.CustomUser"
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # serving static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    # 'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -128,14 +137,21 @@ WSGI_APPLICATION = 'snedaEcommerceAPI.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.sqlite3'),
-        'NAME': os.environ.get('DB_NAME', str(BASE_DIR / 'db.sqlite3')),
-        'USER': os.environ.get('DB_USER', ''),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', ''),
-        'PORT': os.environ.get('DB_PORT', ''),
+        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.postgresql'), # Default to Postgres for Prod
+        'NAME': os.environ.get('DB_NAME', 'sneda_ecommerce'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
+
+# Fallback to SQLite only if explicitly requested or in dev without DB_ENGINE
+if DEBUG and not os.environ.get('DB_ENGINE') and not os.environ.get('DB_HOST'):
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 
 # Cache Config (Redis)
 CACHES = {
@@ -193,6 +209,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+# Enable WhiteNoise compression and caching for static files
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -227,19 +253,27 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 
 # HSTS & SSL Settings (Only for HTTPS/Production)
-if os.environ.get('DJANGO_DEBUG', 'False').lower() == 'false':
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
+# HSTS & SSL Settings (Only for HTTPS/Production)
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 3600 # 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    SECURE_SSL_REDIRECT = True
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True').lower() == 'true'
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 else:
+    SECURE_SSL_REDIRECT = False
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
+    
+# Environmental overrides for special cases
+SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', str(SESSION_COOKIE_SECURE)).lower() == 'true'
+CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', str(CSRF_COOKIE_SECURE)).lower() == 'true'
 
 SESSION_COOKIE_HTTPONLY = True
 # CSRF_COOKIE_HTTPONLY is False as per existing requirement for SPA to read token
+CSRF_COOKIE_HTTPONLY = False # we need JS to read csrftoken cookie (so False)
+CSRF_COOKIE_SAMESITE = "Lax" # or "Strict" or "None" (with Secure)
 
 # JWT SETTINGS
 SIMPLE_JWT = {
@@ -252,12 +286,6 @@ SIMPLE_JWT = {
 # CORS: frontend must be allowed to send cookies
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',') if origin.strip()]
 CORS_ALLOW_CREDENTIALS = True # allow cookies to be sent
-
-# CSRF / cookie-related (tweak for prod)
-CSRF_COOKIE_HTTPONLY = False # we need JS to read csrftoken cookie (so False)
-CSRF_COOKIE_SAMESITE = "Lax" # or "Strict" or "None" (with Secure)
-CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'False').lower() == 'true' # set True in production (HTTPS)
-SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
 
 # Swagger settings
 SWAGGER_SETTINGS = {
@@ -288,89 +316,94 @@ SWAGGER_SETTINGS = {
 # Create a "logs" directory inside your project root if it doesn't exist
 
 
-# LOG_DIR = Path(BASE_DIR, "logs")
-# LOG_DIR.mkdir(exist_ok=True)
+LOG_DIR = Path(BASE_DIR, "logs")
+LOG_DIR.mkdir(exist_ok=True)
 
-# LOGGING = {
-#     "version": 1,
-#     # Allow Django’s default loggers to still work
-#     "disable_existing_loggers": False,
+LOGGING = {
+    "version": 1,
+    # Allow Django’s default loggers to still work
+    "disable_existing_loggers": False,
 
-#     # -----------------------------
-#     #  FORMATTERS
-#     #  How logs will look
-#     # -----------------------------
-#     "formatters": {
-#         # Detailed log output (recommended for saving to files)
-#         "verbose": {
-#             "format": "[{asctime}] [{levelname}] {name} - {message}",
-#             "style": "{",
-#         },
-#         # Short logs (used for console)
-#         "simple": {
-#             "format": "{levelname}: {message}",
-#             "style": "{",
-#         },
-#     },
+    # -----------------------------
+    #  FORMATTERS
+    #  How logs will look
+    # -----------------------------
+    "formatters": {
+        # Detailed log output (recommended for saving to files)
+        "verbose": {
+            "format": "[{asctime}] [{levelname}] {name} - {message}",
+            "style": "{",
+        },
+        # Short logs (used for console)
+        "simple": {
+            "format": "{levelname}: {message}",
+            "style": "{",
+        },
+    },
 
-#     # -----------------------------
-#     #  HANDLERS
-#     #  Where logs are written to
-#     # -----------------------------
-#     "handlers": {
-#         # Log only ERROR & above to errors.log (server crashes, unhandled exceptions)
-#         "file_error": {
-#             "class": "logging.handlers.RotatingFileHandler",
-#             "filename": os.path.join(LOG_DIR, "errors.log"),
-#             "maxBytes": 1024 * 1024 * 5,  # Limit log file to 5MB
-#             "backupCount": 5,  # Keep 5 backup log files
-#             "formatter": "verbose",
-#             "level": "ERROR",
-#         },
+    # -----------------------------
+    #  HANDLERS
+    #  Where logs are written to
+    # -----------------------------
+    "handlers": {
+        # Log only ERROR & above to errors.log (server crashes, unhandled exceptions)
+        "file_error": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": os.path.join(LOG_DIR, "errors.log"),
+            "maxBytes": 1024 * 1024 * 5,  # Limit log file to 5MB
+            "backupCount": 5,  # Keep 5 backup log files
+            "formatter": "verbose",
+            "level": "ERROR",
+        },
 
-#         # Log WARNING & above to warnings.log (throttling, validation issues, etc.)
-#         "file_warning": {
-#             "class": "logging.handlers.RotatingFileHandler",
-#             "filename": os.path.join(LOG_DIR, "warnings.log"),
-#             "maxBytes": 1024 * 1024 * 3,  # 3MB max size
-#             "backupCount": 3,
-#             "formatter": "verbose",
-#             "level": "WARNING",
-#         },
+        # Log WARNING & above to warnings.log (throttling, validation issues, etc.)
+        "file_warning": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": os.path.join(LOG_DIR, "warnings.log"),
+            "maxBytes": 1024 * 1024 * 3,  # 3MB max size
+            "backupCount": 3,
+            "formatter": "verbose",
+            "level": "WARNING",
+        },
 
-#         # Logs to the terminal console (for debugging during development)
-#         "console": {
-#             "class": "logging.StreamHandler",
-#             "formatter": "simple",
-#         },
-#     },
+        # Logs to the terminal console (for debugging during development)
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
 
-#     # -----------------------------
-#     #  LOGGERS
-#     #  Which parts of Django/DRF generate logs
-#     # -----------------------------
-#     "loggers": {
-#         # Django general logs (warnings, errors, anything internal)
-#         "django": {
-#             "handlers": ["file_error", "file_warning"],  # Save warnings & errors to files
-#             "propagate": True,  # Allow logs to bubble up
-#         },
+    # -----------------------------
+    #  LOGGERS
+    #  Which parts of Django/DRF generate logs
+    # -----------------------------
+    "loggers": {
+        # Root logger: catches all logs from project apps
+        "": {
+            "handlers": ["console", "file_error", "file_warning"],
+            "level": "DEBUG", # chnage to INFO or WARNING in production to reduce noise
+        },
+        # Django general logs (warnings, errors, anything internal)
+        "django": {
+            "handlers": ["console", "file_error", "file_warning"],
+            "propagate": True,
+        },
 
-#         # Logs for 500 errors coming from views, middleware, etc.
-#         "django.request": {
-#             "handlers": ["file_error"],  # Only log errors
-#             "level": "ERROR",
-#             "propagate": False,
-#         },
+        # Logs for 500 errors coming from views, middleware, etc.
+        "django.request": {
+            "handlers": ["console", "file_error"],
+            "level": "ERROR",
+            "propagate": False,
+        },
 
-#         # DRF-specific logs (throttling, parsing issues, schema warnings)
-#         "rest_framework": {
-#             "handlers": ["file_warning"],  # Only warnings
-#             "level": "WARNING",
-#             "propagate": False,
-#         },
-#     },
-# }
+        # DRF-specific logs
+        "rest_framework": {
+            "handlers": ["console", "file_warning"],
+            "level": "WARNING",
+            "propagate": False,
+        },
+    },
+}
 
 # to watch live logs
 # run this in a separate terminal: tail -f logs/errors.log for linux

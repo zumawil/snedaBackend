@@ -6,6 +6,6 @@ urlpatterns = [
     path('orders/<int:pk>/', views.OrderView.as_view(), name='order-detail'),  # Get specific order
     path('order-items/', views.OrderItemView.as_view(), name='order-item-list'),  # List/create order items
     path('order-items/<int:pk>/', views.OrderItemView.as_view(), name='order-item-detail'),  # Get/update/delete order item
-   path('order/cancel/<int:pk>/', views.OrderCancelView.as_view(), name='order-cancel'),  # Cancel order
+    path('order/cancel/<int:pk>/', views.OrderCancelView.as_view(), name='order-cancel'),  # Cancel order
     path('order/details/', views.OrderDetailView.as_view(), name='order-details'),  # Get order details
 ]

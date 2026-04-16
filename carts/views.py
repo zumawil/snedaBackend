@@ -9,23 +9,77 @@ from .serializer import (
 )
 from rest_framework import status
 from rest_framework import generics
-from users.permissions import IsVerifiedUser
+from users.permissions import IsVerifiedUser, IsVerifiedOrGuest
 from dotenv import load_dotenv
 from utils.apiResponse import api_response
 from services.checkout_service import CheckoutService
 from products.models import Product
+from users.models import CustomUser
+from users.views import send_user_otp_job
 
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from django.db import transaction, IntegrityError
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+
+# helper function to get cart items from payload
+def get_cart_items_from_payload(cart_items_payload, request):
+        """
+        Helper method to convert cart items payload from frontend into a list of CartItem instances.
+        Clears the cart first so retries don't accumulate duplicate rows.
+        """
+        user = request.user
+        cart, _ = Cart.objects.get_or_create(user=user)
+
+        # Prevent duplicate products in the payload
+        seen_product_ids = set()
+        for item in cart_items_payload:
+            item_no = item.get('item_no')
+            if item_no in seen_product_ids:
+                raise ValueError(f"Duplicate product with item_no {item_no} in cart items payload")
+            seen_product_ids.add(item_no)
+
+        with transaction.atomic():
+            # Always start from a clean slate so retries don't stack up
+            # duplicate CartItem rows (which would violate the Reservation
+            # unique_together('order', 'product') constraint downstream).
+            cart.items.all().delete()
+
+            for item in cart_items_payload:
+                item_no = item.get('item_no')
+                quantity = item.get('quantity')
+
+                if quantity < 1:
+                    raise ValueError(f"Quantity for item {item_no} must be at least 1")
+
+                # Validate product existence
+                try:
+                    product = Product.objects.get(pk=item_no)
+                except Product.DoesNotExist:
+                    raise ValueError(f"Product with ID {item_no} not found")
+
+                if product.inventory_qty < quantity:
+                    raise ValueError(
+                        f"Insufficient stock for product {product.item_no}. "
+                        f"Available: {product.inventory_qty}, Requested: {quantity}"
+                    )
+
+                CartItem.objects.create(
+                    quantity=quantity,
+                    product=product,
+                    cart=cart
+                )
+
+  
+
 #  get user cart
 class CartView(APIView):
 
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Get the current user's cart",
@@ -186,8 +240,9 @@ class CheckoutView(APIView):
      create order from cart
      bills the user 
      and retries payment for a failed order
+     gets payload of items from frontend 
     """
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Process checkout - create order from cart and initiate payment",
@@ -198,12 +253,25 @@ class CheckoutView(APIView):
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
+                'items': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'item_no': openapi.Schema(type=openapi.TYPE_STRING, description="Product ID/SKU"),
+                            'quantity': openapi.Schema(type=openapi.TYPE_INTEGER, description="Quantity")
+                        }
+                    ),
+                    description="List of products and quantities"
+                ),
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description="Email address (Required for Guest Checkout)"),
                 'address': openapi.Schema(type=openapi.TYPE_STRING, description="Delivery address"),
                 'pickup': openapi.Schema(type=openapi.TYPE_BOOLEAN, description="Whether customer will pick up order"),
+                'pickup_location': openapi.Schema(type=openapi.TYPE_STRING, description="Selected pickup branch location"),
                 'order_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="Order ID for payment retry (optional)")
             }
         ),
-        responses={
+        responses={ 
             200: openapi.Response(
                 description="Checkout successful or payment retry processed",
                 schema=openapi.Schema(
@@ -220,9 +288,21 @@ class CheckoutView(APIView):
             401: openapi.Response(description="Unauthorized - Authentication required")
         }
     )
+    
     def post(self, request):
         user = request.user
+        items = request.data.get('items', [])
         
+        if not items:
+            return api_response(
+                success=False,
+                data=None,
+                error="Cart is empty",
+                message="Cannot proceed to checkout with an empty cart",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+      
         # Payment Retry Flow
         order_id = request.data.get('order_id')
         if order_id:
@@ -253,11 +333,67 @@ class CheckoutView(APIView):
                 message="Idempotency key is required for checkout",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-            
-        address = request.data.get('address')
-        pickup = str(request.data.get('pickup', '')).lower() == 'true'
 
-        result = CheckoutService.process_checkout(user, idempotency_key, address, pickup)
+        # This method will validate the items payload add items to user cart
+        #  and ensure that the products
+        #  exist before proceeding with checkout
+        get_cart_items_from_payload(items, request)
+            
+        address = request.data.get('address', None)
+        pickup = str(request.data.get('pickup', '')).lower() == 'true'
+        pickup_location = request.data.get('pickup_location')
+
+        # --- Guest Email Handling ---
+        if user.is_guest:
+            email = request.data.get('email')
+            # If the guest currently has a placeholder email, we REQUIRE a real one
+            is_placeholder = "@guest.sneda.local" in user.email
+            
+            if is_placeholder and not email:
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Email required",
+                    message="Email is required for guest checkout",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if email:
+                try:
+                    # Check if this email belongs to a verified user (Security Risk)
+                    existing_user = CustomUser.objects.filter(email=email).first()
+                    if existing_user and existing_user.verified:
+                        return api_response(
+                            success=False,
+                            data=None,
+                            error="Account exists",
+                            message="This email is associated with a verified account. Please log in to continue.",
+                            status_code=status.HTTP_403_FORBIDDEN
+                        )
+                    
+                    user.email = email
+                    # We keep is_guest = True until they verify via OTP (Production Choice)
+                    user.save(update_fields=['email'])
+                    
+                    # Trigger OTP email immediately so they can verify later
+                    send_user_otp_job(user)
+                except IntegrityError:
+                    # Email exists but is unverified/guest - we can link to it
+                    user = CustomUser.objects.get(email=email)
+
+        if pickup and not pickup_location:
+            return api_response(
+                success=False,
+                data=None,
+                error="Pickup location required",
+                message="pickup_location is required when pickup is true",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        if not pickup:
+            pickup_location = None
+        else:
+            address = None
+        result = CheckoutService.process_checkout(user, idempotency_key, address, pickup, pickup_location)
 
         return api_response(
             success=result.get('success', False),
@@ -267,247 +403,8 @@ class CheckoutView(APIView):
             status_code=result.get('status_code', status.HTTP_200_OK)
         )
 
-class AddToCartView(APIView):
-
-    permission_classes = [IsVerifiedUser]
-
-    @swagger_auto_schema(
-        operation_description="Add a product to the cart",
-        security=['Bearer', 'Cookie'],
-        responses={
-            200: openapi.Response(
-                description="Product added to cart successfully",
-                schema=CartItemSerializer()
-            ),
-            404: openapi.Response(description="Product not found"),
-            401: openapi.Response(description="Unauthorized - Authentication required")
-        }
-    )
-    def post(self, request, product_pk):
-        # create cart if it doesn't exist for user
-        cart, created = Cart.objects.get_or_create(user=request.user)
-
-        try:
-            product = Product.objects.get(pk=product_pk)
-        except Product.DoesNotExist:
-            return api_response(
-                success=False,
-                data=None,
-                error="Product not found",
-                message="Product with the given ID does not exist",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-        except Exception as e:
-            return api_response(
-                success=False,
-                data=None,
-                error=str(e),
-                message="Error retrieving product",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        if product.inventory_qty < 1:
-            return api_response(
-                success=False,
-                data=None,
-                error="Out of stock",
-                message="Product is out of stock",
-                status_code=status.HTTP_200_OK
-            )
-
-        # check if the cart item is already created in the cart
-        cart_item, created = CartItem.objects.get_or_create(
-            defaults={'quantity': 1},
-            product=product,
-            cart=cart
-        )
-        
-        # if the cart item already exists
-        if not created:
-            '''
-                 It compares the total available stock of the product 
-                 against the new quantity the user would have if this 
-                 add operation succeeds.
-            '''
-            if product.inventory_qty < cart_item.quantity + 1:
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Insufficient stock",
-                    message="Not enough stock available for this product",
-                    status_code=status.HTTP_200_OK
-                )
-            cart_item.quantity += 1
-            cart_item.save()
-        
-        serializer = CartItemSerializer(cart_item)
-        return api_response(
-            success=True,
-            data=serializer.data,
-            message="Product added to cart successfully",
-            status_code=status.HTTP_200_OK
-        )
-       
-class RemoveProductFromCartView(APIView):
-
-    permission_classes = [IsVerifiedUser]
-
-    @swagger_auto_schema(
-        operation_description="Remove a product from the cart",
-        security=['Bearer', 'Cookie'],
-        responses={
-            200: openapi.Response(
-                description="Product removed from cart successfully",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                        "message": openapi.Schema(type=openapi.TYPE_STRING),
-                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
-                        "error": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
-                )
-            ),
-            404: openapi.Response(description="Product not found in cart"),
-            401: openapi.Response(description="Unauthorized - Authentication required")
-        }
-    )
-    def post(self, request, product_pk):
-        try:
-            cart = Cart.objects.get(user=request.user)
-            # get the product in the cart item
-            cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
-            cart_item.delete()
-
-            return api_response(
-                success=True,
-                data=None,
-                message="Product removed from cart successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except CartItem.DoesNotExist:
-            return api_response(
-                success=False,
-                data=None,
-                error="Product not found in cart",
-                message="Product with the given ID does not exist in the cart",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-# decrement product quantity in cart
-class DecreMentProductQuantityInCartView(APIView):
-    permission_classes = [IsVerifiedUser]
-
-    @swagger_auto_schema(
-        operation_description="Decrement product quantity in cart by 1",
-        security=['Bearer', 'Cookie'],
-        responses={
-            200: openapi.Response(
-                description="Product quantity decremented successfully",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                        "message": openapi.Schema(type=openapi.TYPE_STRING),
-                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
-                        "error": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
-                )
-            ),
-            404: openapi.Response(description="Product not found in cart"),
-            401: openapi.Response(description="Unauthorized - Authentication required")
-        }
-    )
-    def post(self, request, product_pk):
-        try:
-            cart = Cart.objects.get(user=request.user)
-            # get the product in the cart item
-            cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
-            
-            # remove the cart item from the cart if the quantity is 1
-            if cart_item.quantity <= 1:
-                cart_item.delete()
-            else:
-                cart_item.quantity -= 1
-                cart_item.save()
-
-            return api_response(
-                success=True,
-                data=None,
-                message="Product quantity decremented successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except CartItem.DoesNotExist:
-            return api_response(
-                success=False,
-                data=None,
-                error="Product not found in cart",
-                message="Product with the given ID does not exist in the cart",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-        
-class IncrementProductQuantityInCartView(APIView):
-    permission_classes = [IsVerifiedUser]
-
-    @swagger_auto_schema(
-        operation_description="Increment product quantity in cart by 1",
-        security=['Bearer', 'Cookie'],
-        responses={
-            200: openapi.Response(
-                description="Product quantity incremented successfully",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
-                        "message": openapi.Schema(type=openapi.TYPE_STRING),
-                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
-                        "error": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
-                )
-            ),
-            400: openapi.Response(description="Bad request - Insufficient stock"),
-            404: openapi.Response(description="Product not found in cart"),
-            401: openapi.Response(description="Unauthorized - Authentication required")
-        }
-    )
-    def post(self, request, product_pk):
-        try:
-            cart = Cart.objects.get(user=request.user)
-            # get the product in the cart item
-            cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
-            product = cart_item.product
-
-            new_quantity = cart_item.quantity + 1
-
-            if new_quantity > product.inventory_qty:
-                return api_response(
-                    success=False,
-                    data=None,
-                    error="Insufficient stock",
-                    message="Not enough stock available for this product",
-                    status_code=status.HTTP_400_BAD_REQUEST
-                )
-            
-            cart_item.quantity += 1
-            cart_item.save()
-
-            return api_response(
-                success=True,
-                data=None,
-                message="Product quantity incremented successfully",
-                status_code=status.HTTP_200_OK
-            )
-        except CartItem.DoesNotExist:
-            return api_response(
-                success=False,
-                data=None,
-                error="Product not found in cart",
-                message="Product with the given ID does not exist in the cart",
-                status_code=status.HTTP_404_NOT_FOUND
-            )
-
-# clear all cart
 class ClearCartView(APIView):
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
         operation_description="Clear all items from the cart",
@@ -549,46 +446,402 @@ class ClearCartView(APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-class GetCartCountView(APIView):
-    permission_classes = [IsVerifiedUser]
+class PickupCheckoutView(APIView):
+    permission_classes = [IsVerifiedOrGuest]
 
     @swagger_auto_schema(
-        operation_description="Get the number of items in the cart",
+        operation_description="Checkout with pickup",
         security=['Bearer', 'Cookie'],
         responses={
             200: openapi.Response(
-                description="Cart count retrieved successfully",
+                description="Checkout successful",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
                         "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
                         "message": openapi.Schema(type=openapi.TYPE_STRING),
-                        "data": openapi.Schema(
-                            type=openapi.TYPE_OBJECT,
-                            properties={
-                                "count": openapi.Schema(type=openapi.TYPE_INTEGER)
-                            }
-                        ),
+                        "data": openapi.Schema(type=openapi.TYPE_OBJECT),
                         "error": openapi.Schema(type=openapi.TYPE_STRING)
                     }
                 )
             ),
+            404: openapi.Response(description="Cart not found"),
             401: openapi.Response(description="Unauthorized - Authentication required")
         }
     )
-    def get(self, request):
-        try:
-            cart = Cart.objects.get(user=request.user)
+    def post(self, request):
+        user = request.user
+        items = request.data.get('items', [])
+        
+        if not items:
             return api_response(
-                success=True,
-                data={"count": cart.items.count()},
-                message="Cart count retrieved successfully",
-                status_code=status.HTTP_200_OK
+                success=False,
+                data=None,
+                error="Cart is empty",
+                message="Cannot proceed to checkout with an empty cart",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
-        except Cart.DoesNotExist:
+        
+        get_cart_items_from_payload(items, request)
+
+        # --- Guest Email Handling ---
+        if user.is_guest:
+            email = request.data.get('email')
+            # If the guest currently has a placeholder email, we REQUIRE a real one
+            is_placeholder = "@guest.sneda.local" in user.email
+            
+            if is_placeholder and not email:
+                return api_response(
+                    success=False,
+                    data=None,
+                    error="Email required",
+                    message="Email is required for guest checkout",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if email:
+                try:
+                    # Check if this email belongs to a verified user (Security Risk)
+                    existing_user = CustomUser.objects.filter(email=email).first()
+                    if existing_user and existing_user.verified:
+                        return api_response(
+                            success=False,
+                            data=None,
+                            error="Account exists",
+                            message="This email is associated with a verified account. Please log in to continue.",
+                            status_code=status.HTTP_403_FORBIDDEN
+                        )
+                    
+                    user.email = email
+                    # We keep is_guest = True until they verify via OTP (Production Choice)
+                    user.save(update_fields=['email'])
+
+                    # Trigger OTP email immediately so they can verify later
+                    send_user_otp_job(user)
+                except IntegrityError:
+                    # Email exists but is unverified/guest - we can link to it
+                    user = CustomUser.objects.get(email=email)
+
+        # Idempotency key is required
+        idempotency_key = request.data.get('X-Idempotency-Key') or request.headers.get('X-Idempotency-Key')
+        if not idempotency_key:
             return api_response(
-                success=True,
-                data={"count": 0},
-                message="Cart count retrieved successfully",
-                status_code=status.HTTP_200_OK
+                success=False,
+                data=None,
+                error="Idempotency key required",
+                message="Idempotency key is required for checkout",
+                status_code=status.HTTP_400_BAD_REQUEST
             )
+
+        pickup_location = request.data.get('pickup_location')
+        if not pickup_location:
+            return api_response(
+                success=False,
+                data=None,
+                error="Pickup location required",
+                message="Please select a pickup branch",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Process the checkout logic for pickup (Pay on Collection)
+        result = CheckoutService.process_pickup_checkout(
+            user=user,
+            idempotency_key=idempotency_key,
+            pickup_location=pickup_location
+        )
+
+        return api_response(
+            success=result.get('success', False),
+            data=result.get('data'),
+            message=result.get('message'),
+            error=result.get('error'),
+            status_code=result.get('status_code', status.HTTP_200_OK)
+        )
+
+# class AddToCartView(APIView):
+
+#     permission_classes = [IsVerifiedUser]
+
+#     @swagger_auto_schema(
+#         operation_description="Add a product to the cart",
+#         security=['Bearer', 'Cookie'],
+#         responses={
+#             200: openapi.Response(
+#                 description="Product added to cart successfully",
+#                 schema=CartItemSerializer()
+#             ),
+#             404: openapi.Response(description="Product not found"),
+#             401: openapi.Response(description="Unauthorized - Authentication required")
+#         }
+#     )
+
+
+#     def post(self, request, product_pk):
+#         # create cart if it doesn't exist for user
+#         cart, created = Cart.objects.get_or_create(user=request.user)
+
+#         try:
+#             product = Product.objects.get(pk=product_pk)
+#         except Product.DoesNotExist:
+#             return api_response(
+#                 success=False,
+#                 data=None,
+#                 error="Product not found",
+#                 message="Product with the given ID does not exist",
+#                 status_code=status.HTTP_404_NOT_FOUND
+#             )
+#         except Exception as e:
+#             return api_response(
+#                 success=False,
+#                 data=None,
+#                 error=str(e),
+#                 message="Error retrieving product",
+#                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+#             )
+
+#         if product.inventory_qty < 1:
+#             return api_response(
+#                 success=False,
+#                 data=None,
+#                 error="Out of stock",
+#                 message="Product is out of stock",
+#                 status_code=status.HTTP_200_OK
+#             )
+
+#         # check if the cart item is already created in the cart
+#         cart_item, created = CartItem.objects.get_or_create(
+#             defaults={'quantity': 1},
+#             product=product,
+#             cart=cart
+#         )
+        
+#         # if the cart item already exists
+#         if not created:
+#             '''
+#                  It compares the total available stock of the product 
+#                  against the new quantity the user would have if this 
+#                  add operation succeeds.
+#             '''
+#             if product.inventory_qty < cart_item.quantity + 1:
+#                 return api_response(
+#                     success=False,
+#                     data=None,
+#                     error="Insufficient stock",
+#                     message="Not enough stock available for this product",
+#                     status_code=status.HTTP_200_OK
+#                 )
+#             cart_item.quantity += 1
+#             cart_item.save()
+        
+#         serializer = CartItemSerializer(cart_item)
+#         return api_response(
+#             success=True,
+#             data=serializer.data,
+#             message="Product added to cart successfully",
+#             status_code=status.HTTP_200_OK
+#         )
+       
+# class RemoveProductFromCartView(APIView):
+
+#     permission_classes = [IsVerifiedUser]
+
+#     @swagger_auto_schema(
+#         operation_description="Remove a product from the cart",
+#         security=['Bearer', 'Cookie'],
+#         responses={
+#             200: openapi.Response(
+#                 description="Product removed from cart successfully",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+#                         "message": openapi.Schema(type=openapi.TYPE_STRING),
+#                         "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+#                         "error": openapi.Schema(type=openapi.TYPE_STRING)
+#                     }
+#                 )
+#             ),
+#             404: openapi.Response(description="Product not found in cart"),
+#             401: openapi.Response(description="Unauthorized - Authentication required")
+#         }
+#     )
+#     def post(self, request, product_pk):
+#         try:
+#             cart = Cart.objects.get(user=request.user)
+#             # get the product in the cart item
+#             cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
+#             cart_item.delete()
+
+#             return api_response(
+#                 success=True,
+#                 data=None,
+#                 message="Product removed from cart successfully",
+#                 status_code=status.HTTP_200_OK
+#             )
+#         except CartItem.DoesNotExist:
+#             return api_response(
+#                 success=False,
+#                 data=None,
+#                 error="Product not found in cart",
+#                 message="Product with the given ID does not exist in the cart",
+#                 status_code=status.HTTP_404_NOT_FOUND
+#             )
+# decrement product quantity in cart
+# class DecreMentProductQuantityInCartView(APIView):
+#     permission_classes = [IsVerifiedUser]
+
+#     @swagger_auto_schema(
+#         operation_description="Decrement product quantity in cart by 1",
+#         security=['Bearer', 'Cookie'],
+#         responses={
+#             200: openapi.Response(
+#                 description="Product quantity decremented successfully",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+#                         "message": openapi.Schema(type=openapi.TYPE_STRING),
+#                         "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+#                         "error": openapi.Schema(type=openapi.TYPE_STRING)
+#                     }
+#                 )
+#             ),
+#             404: openapi.Response(description="Product not found in cart"),
+#             401: openapi.Response(description="Unauthorized - Authentication required")
+#         }
+#     )
+#     def post(self, request, product_pk):
+#         try:
+#             cart = Cart.objects.get(user=request.user)
+#             # get the product in the cart item
+#             cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
+            
+#             # remove the cart item from the cart if the quantity is 1
+#             if cart_item.quantity <= 1:
+#                 cart_item.delete()
+#             else:
+#                 cart_item.quantity -= 1
+#                 cart_item.save()
+
+#             return api_response(
+#                 success=True,
+#                 data=None,
+#                 message="Product quantity decremented successfully",
+#                 status_code=status.HTTP_200_OK
+#             )
+#         except CartItem.DoesNotExist:
+#             return api_response(
+#                 success=False,
+#                 data=None,
+#                 error="Product not found in cart",
+#                 message="Product with the given ID does not exist in the cart",
+#                 status_code=status.HTTP_404_NOT_FOUND
+#             )
+        
+# class IncrementProductQuantityInCartView(APIView):
+#     permission_classes = [IsVerifiedUser]
+
+#     @swagger_auto_schema(
+#         operation_description="Increment product quantity in cart by 1",
+#         security=['Bearer', 'Cookie'],
+#         responses={
+#             200: openapi.Response(
+#                 description="Product quantity incremented successfully",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+#                         "message": openapi.Schema(type=openapi.TYPE_STRING),
+#                         "data": openapi.Schema(type=openapi.TYPE_OBJECT),
+#                         "error": openapi.Schema(type=openapi.TYPE_STRING)
+#                     }
+#                 )
+#             ),
+#             400: openapi.Response(description="Bad request - Insufficient stock"),
+#             404: openapi.Response(description="Product not found in cart"),
+#             401: openapi.Response(description="Unauthorized - Authentication required")
+#         }
+#     )
+#     def post(self, request, product_pk):
+#         try:
+#             cart = Cart.objects.get(user=request.user)
+#             # get the product in the cart item
+#             cart_item = CartItem.objects.get(cart=cart, product__pk=product_pk)
+#             product = cart_item.product
+
+#             new_quantity = cart_item.quantity + 1
+
+#             if new_quantity > product.inventory_qty:
+#                 return api_response(
+#                     success=False,
+#                     data=None,
+#                     error="Insufficient stock",
+#                     message="Not enough stock available for this product",
+#                     status_code=status.HTTP_400_BAD_REQUEST
+#                 )
+            
+#             cart_item.quantity += 1
+#             cart_item.save()
+
+#             return api_response(
+#                 success=True,
+#                 data=None,
+#                 message="Product quantity incremented successfully",
+#                 status_code=status.HTTP_200_OK
+#             )
+#         except CartItem.DoesNotExist:
+#             return api_response(
+#                 success=False,
+#                 data=None,
+#                 error="Product not found in cart",
+#                 message="Product with the given ID does not exist in the cart",
+#                 status_code=status.HTTP_404_NOT_FOUND
+#             )
+
+# clear all cart
+
+# class GetCartCountView(APIView):
+#     permission_classes = [IsVerifiedUser]
+
+#     @swagger_auto_schema(
+#         operation_description="Get the number of items in the cart",
+#         security=['Bearer', 'Cookie'],
+#         responses={
+#             200: openapi.Response(
+#                 description="Cart count retrieved successfully",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "success": openapi.Schema(type=openapi.TYPE_BOOLEAN),
+#                         "message": openapi.Schema(type=openapi.TYPE_STRING),
+#                         "data": openapi.Schema(
+#                             type=openapi.TYPE_OBJECT,
+#                             properties={
+#                                 "count": openapi.Schema(type=openapi.TYPE_INTEGER)
+#                             }
+#                         ),
+#                         "error": openapi.Schema(type=openapi.TYPE_STRING)
+#                     }
+#                 )
+#             ),
+#             401: openapi.Response(description="Unauthorized - Authentication required")
+#         }
+#     )
+#     def get(self, request):
+#         try:
+#             cart = Cart.objects.get(user=request.user)
+#             return api_response(
+#                 success=True,
+#                 data={"count": cart.items.count()},
+#                 message="Cart count retrieved successfully",
+#                 status_code=status.HTTP_200_OK
+#             )
+#         except Cart.DoesNotExist:
+#             return api_response(
+#                 success=True,
+#                 data={"count": 0},
+#                 message="Cart count retrieved successfully",
+#                 status_code=status.HTTP_200_OK
+#             )
+
+

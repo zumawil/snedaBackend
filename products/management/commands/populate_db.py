@@ -113,21 +113,12 @@ class Command(BaseCommand):
                         inventory_qty = parse_int(row.get('InventoryQTY') or row.get('Inventory QTY'), default=0)
                         gross_price = parse_decimal(row.get('Grossprice') or row.get('Gross Price'))
 
-                        # in_stock based on inventory_qty
-                        in_stock = 1 if inventory_qty and inventory_qty > 0 else 0
 
                         # GTIN
                         gtin = row.get('GTIN') or row.get('gtin') or None
                         if gtin:
                             gtin = gtin.strip() or None
 
-                        # Availability from DATA2 (optional — only present if merging)
-                        availability = parse_int(
-                            row.get('Availability') or row.get('availability'),
-                            default=0
-                        )
-                        if availability:
-                            in_stock = availability
 
                         product, created = Product.objects.update_or_create(
                             item_no=item_no,
@@ -144,7 +135,6 @@ class Command(BaseCommand):
                                 'box_qty': box_qty,
                                 'inventory_qty': inventory_qty or 0,
                                 'gross_price': gross_price,
-                                'in_stock': in_stock,
                             }
                         )
 

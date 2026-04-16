@@ -43,7 +43,6 @@ class Product(models.Model):
     gross_price = models.DecimalField(max_digits=10, decimal_places=2)
     brand = models.ForeignKey(Brand, related_name='products', on_delete=models.CASCADE)
 
-    in_stock = models.IntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -55,14 +54,23 @@ class Product(models.Model):
         return f"{self.item_no} - {self.category.name}"
     
     # return available stock considering active reservations
+    @property
     def available_stock(self):
+        # Fast path for annotated querysets to avoid N+1 queries
+        annotated = getattr(self, "_available_stock", None)
+        if annotated is not None:
+            return annotated
+            
         from orders.models import Reservation
-        reserved = self.reservations.filter(
+        from django.db.models import Sum
+        from django.utils import timezone
+        
+        total = self.reservations.filter(
             status=Reservation.Status.ACTIVE,
             expires_at__gt=timezone.now()
-        ).aggregate(total=models.Sum('quantity'))['total'] or 0
+        ).aggregate(total=Sum('quantity'))['total']
         
-        return self.inventory_qty - reserved
+        return max(0, self.inventory_qty - (total or 0))
 
     
 class ProductImage(models.Model):

@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Sum, Count
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.db.models import F
 from django.db import transaction
 from admin_panel.tasks import (
@@ -14,7 +14,7 @@ from admin_panel.tasks import (
 
 from users.models import CustomUser
 from products.models import Product, ProductImage, Category, Brand, HSCode, ProductGroup
-from orders.models import Order, OrderItem
+from orders.models import Order, OrderItem, OrderStatus, PickupFulfillment
 from payments.models import Payment
 from shipping.models import Shipping
 from notifications.models import Notification
@@ -68,7 +68,8 @@ class DashboardStatsView(APIView):
                                     type=openapi.TYPE_OBJECT,
                                     properties={
                                         "total_revenue_for_today": openapi.Schema(type=openapi.TYPE_NUMBER, description="Total revenue for today"),
-                                        "total_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders today"),
+                                        "orders_today": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders today"),
+                                        "total_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total orders all time"),
                                         "total_products": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total products in system"),
                                         "total_pending_orders": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total pending orders"),
                                         "total_users": openapi.Schema(type=openapi.TYPE_INTEGER, description="Total registered users"),
@@ -112,8 +113,17 @@ class DashboardStatsView(APIView):
         try:
             today = timezone.now().date()
             total_revenue = Payment.objects.filter(status='success', date_created__date=today).aggregate(Sum('amount'))['amount__sum'] or 0
-            total_orders = Order.objects.filter(created_at__date=today).count()
-            total_pending_orders = Order.objects.filter(Q(shipping__status='pending') | Q(shipping__isnull=True)).count()
+            orders_today = Order.objects.filter(created_at__date=today).count()
+            total_orders = Order.objects.count()
+            # Count pending orders (delivery with pending shipping OR pickup with pending fulfillment OR no fulfillment yet)
+            total_pending_orders = Order.objects.filter(
+                (
+                    Q(shipping__status='pending') | 
+                    Q(pickup_fulfillment__status='pending') |
+                    Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                ) & 
+                ~Q(status__in=['cancelled', 'refunded'])
+            ).count()
             total_products = Product.objects.count()
             total_users = CustomUser.objects.count()
 
@@ -152,6 +162,7 @@ class DashboardStatsView(APIView):
             data = {
                 "stats": {
                     "total_revenue_for_today": float(total_revenue),
+                    "orders_today": orders_today,
                     "total_orders": total_orders,
                     "total_products": total_products,
                     'total_pending_orders': total_pending_orders,
@@ -265,6 +276,9 @@ class AdminOrderListView(APIView):
         security=['Bearer', 'Cookie'],
         manual_parameters=[
             openapi.Parameter('status', openapi.IN_QUERY, description="Filter by shipping status (pending, shipped, delivered, cancelled)", type=openapi.TYPE_STRING),
+            openapi.Parameter('search', openapi.IN_QUERY, description="Search by ID, email, or name", type=openapi.TYPE_STRING),
+            openapi.Parameter('start_date', openapi.IN_QUERY, description="Start date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+            openapi.Parameter('end_date', openapi.IN_QUERY, description="End date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
             openapi.Parameter('page', openapi.IN_QUERY, description="Page number", type=openapi.TYPE_INTEGER),
             openapi.Parameter('page_size', openapi.IN_QUERY, description="Number of items per page", type=openapi.TYPE_INTEGER),
         ],
@@ -279,15 +293,71 @@ class AdminOrderListView(APIView):
     )
     def get(self, request):
         try:
-            # Support filtering by status
+            # Support filtering by status and search
             order_status = request.query_params.get('status', None)
+            search_query = request.query_params.get('search', None)
+            start_date_str = request.query_params.get('start_date', None)
+            end_date_str = request.query_params.get('end_date', None)
+            
+            parsed_start_date = None
+            parsed_end_date = None
+
+            if start_date_str:
+                try:
+                    parsed_start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return api_response(
+                        success=False,
+                        error="Invalid start_date format",
+                        message="start_date must be in YYYY-MM-DD format",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+
+            if end_date_str:
+                try:
+                    parsed_end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    return api_response(
+                        success=False,
+                        error="Invalid end_date format",
+                        message="end_date must be in YYYY-MM-DD format",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
             orders = Order.objects.all().order_by('-created_at')
             
             if order_status:
                 if order_status == 'pending':
-                    orders = orders.filter(Q(shipping__status='pending') | Q(shipping__isnull=True))
+                    # Pending: delivery orders with pending shipping OR pickup orders with pending fulfillment OR no fulfillment yet
+                    orders = orders.filter(
+                        (
+                            Q(shipping__status='pending') | 
+                            Q(pickup_fulfillment__status='pending') |
+                            Q(shipping__isnull=True, pickup_fulfillment__isnull=True)
+                        ) & 
+                        ~Q(status__in=['cancelled', 'refunded'])
+                    )
                 else:
-                    orders = orders.filter(shipping__status=order_status)
+                    # For other statuses, check both shipping and pickup fulfillment
+                    orders = orders.filter(
+                        Q(shipping__status=order_status) | 
+                        Q(pickup_fulfillment__status=order_status)
+                    )
+                    
+            if search_query:
+                conditions = (
+                    Q(user__email__icontains=search_query) | 
+                    Q(user__first_name__icontains=search_query) | 
+                    Q(user__last_name__icontains=search_query) |
+                    Q(order_id__iexact=search_query)
+                )
+                if search_query.isdigit():
+                    conditions |= Q(id=search_query)
+                orders = orders.filter(conditions)
+                
+            if parsed_start_date:
+                orders = orders.filter(created_at__date__gte=parsed_start_date)
+            if parsed_end_date:
+                orders = orders.filter(created_at__date__lte=parsed_end_date)
             
             paginator = self.pagination_class()
             result_page = paginator.paginate_queryset(orders, request)
@@ -371,22 +441,52 @@ class AdminUpdateOrderStatusView(APIView):
         serializer.is_valid(raise_exception=True) # automatically checks and raises error
         new_status = serializer.validated_data["status"]
 
-        if not hasattr(order, "shipping") or not order.shipping:
+        if not order.approved:
             return api_response(
                 success=False,
-                error="No shipping record",
-                message="No shipping related to this order was found",
+                error="Order is not approved",
+                message="Order cannot be updated as it is not approved",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        shipping = order.shipping
-        shipping.status = new_status
-
-        tracking_number = request.data.get("tracking_number")
-        if tracking_number:
-            shipping.tracking_number = tracking_number
-
-        shipping.save()
+        # 1. Update Fulfillment status in DB
+        normalized_status = new_status.lower()
+        try:
+            if order.is_pickup:
+                if not hasattr(order, 'pickup_fulfillment'):
+                    return api_response(
+                        success=False,
+                        error="No pickup record",
+                        message="Order has no pickup fulfillment record",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                pickup = order.pickup_fulfillment
+                if normalized_status in ['ready']:
+                    pickup.mark_as_ready(request.user)
+                elif normalized_status in ['completed']:
+                    pickup.mark_as_completed(request.user)
+                else:
+                    pickup.status = normalized_status
+                    pickup.save()
+            else:
+                shipping = getattr(order, 'shipping', None)
+                if not shipping:
+                    return api_response(
+                        success=False,
+                        error="No shipping record",
+                        message="Order has no shipping record",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+                shipping.status = normalized_status
+                shipping.save()
+        except Exception as e:
+            return api_response(
+                success=False,
+                error=str(e),
+                message="Failed to update fulfillment status",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         # 1. Create the tracking record in 'pending' state
         job = BackgroundJob.objects.create(
@@ -398,7 +498,14 @@ class AdminUpdateOrderStatusView(APIView):
 
         # 2. Queue the Celery task safely
         def dispatch_task():
-            result = send_shipping_status_email_task.delay(job.id, order.id, new_status, request.user.id, tracking_number)
+            result = send_shipping_status_email_task.delay(
+                job.id,
+                order.id, 
+                new_status, 
+                request.user.id, 
+                order.order_id,
+                order.fulfillment,
+            )
             # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
@@ -409,7 +516,7 @@ class AdminUpdateOrderStatusView(APIView):
 
         return api_response(
             success=True,
-            data=serializer.data,
+            data={"job_id": job.id, 'data': serializer.data},
             message=f"Order status updated to {new_status}",
             status_code=status.HTTP_200_OK
         )     
@@ -548,6 +655,7 @@ class AdminOrderRejectView(APIView):
 
         return api_response(
             success=True,
+            data={"job_id": job.id},
             message="Order rejected successfully",
             status_code=status.HTTP_200_OK
         )
@@ -577,35 +685,50 @@ class AdminOrderCancelView(APIView):
             404: openapi.Response(description="Order not found")
         }
     )
-    @transaction.atomic
     def post(self, request, pk):
-        # Lock order row to avoid race conditions
-        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
+        # 1. Lock order row and perform DB-side restoration inside ONE atomic block
+        try:
+            with transaction.atomic():
+                order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
 
-        if order.effective_status == "cancelled":
+                if not order.is_cancellable():
+                    return api_response(
+                        success=False,
+                        error="Not cancellable",
+                        message=f"Order in status {order.status} cannot be cancelled",
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Mark order.approved as False immediately
+                order.approved = False
+                order.save(update_fields=['approved'])
+                
+                # Perform DB-side stock and state reversals
+                needs_refund, payment = order.prepare_stock_restore()
+                # order.prepare_stock_restore() already handles order.status and order.save()
+
+        except Exception as e:
+            logger.exception("Error during prepare_stock_restore in AdminOrderCancelView")
             return api_response(
                 success=False,
-                error="Already cancelled",
-                message="Order already cancelled",
-                status_code=status.HTTP_400_BAD_REQUEST
+                error=str(e),
+                message="Error processing DB-side cancellation",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Restore stock for each order item
-        for item in order.items.all():
-            Product.objects.filter(id=item.product.id).update(
-                inventory_qty=F('inventory_qty') + item.quantity
-            )
+        # 2. Run external I/O (refund) OUTSIDE the main atomic block
+        if needs_refund and payment:
+            try:
+                success, message = order.perform_refund(payment)
+                if not success:
+                    # perform_refund already marks for review and sets status to cancellation_pending
+                    logger.warning(f"Refund initiation failed for order {order.id}: {message}")
+            except Exception as e:
+                logger.exception(f"Unexpected error during refund for order {order.id}")
+                # We don't return 500 here because the DB restoration already succeeded.
+                # The order is in a consistent (though perhaps intermediate) state.
 
-        # Cancel shipping if present
-        if hasattr(order, "shipping") and order.shipping:
-            order.shipping.status = "cancelled"
-            order.shipping.save()
-
-        # Mark order as not approved
-        order.approved = False
-        order.save()
-        
-        # 1. Create the tracking record in 'pending' state
+        # 3. Create the tracking record ONLY if DB-side restoration finished
         job = BackgroundJob.objects.create(
             task_type="send_order_cancelled_email",
             related_object_type="order",
@@ -613,10 +736,9 @@ class AdminOrderCancelView(APIView):
             user=request.user
         )
 
-        # 2. Queue the Celery task safely
+        # 4. Queue the Celery task safely
         def dispatch_task():
             result = send_order_cancelled_email_task.delay(job.id, order.id, request.user.id)
-            # Capture the Celery task_id immediately
             job.task_id = result.id
             job.save(update_fields=['task_id'])
 
@@ -624,7 +746,8 @@ class AdminOrderCancelView(APIView):
 
         return api_response(
             success=True,
-            message="Order cancelled successfully and stock restored",
+            data={"job_id": job.id},
+            message="Order cancellation processed successfully",
             status_code=status.HTTP_200_OK
         )
 
@@ -855,6 +978,12 @@ class AdminProductDetailView(APIView):
             if brand_name:
                 brand, _ = Brand.objects.get_or_create(name=brand_name)
                 data['brand'] = brand.id
+
+            # Handle HS Code
+            hs_code_value = data.get('hs_code')
+            if hs_code_value:
+                hs_code, _ = HSCode.objects.get_or_create(code=hs_code_value)
+                data['hs_code'] = hs_code.id
 
             serializer = ProductCreateUpdateSerializer(product, data=data)
             if serializer.is_valid():
@@ -1369,7 +1498,6 @@ class AdminUserDetailView(APIView):
             
             data = {
                 "user": user_serializer.data,
-                "orders": order_serializer.data,
                 "total_orders": order_stats['total_orders'],
                 "total_spent": float(order_stats['total_spent'] or 0)
             }

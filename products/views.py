@@ -387,6 +387,11 @@ class ProductListCreateView(generics.ListCreateAPIView):
             return [permissions.AllowAny()]
         return [IsAdminUser()]
 
+    def get_authenticators(self):
+        if self.request.method == 'GET':
+            return []
+        return super().get_authenticators()
+
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return ProductCreateUpdateSerializer
@@ -575,6 +580,7 @@ class FilterProduct(APIView):
     """
     
     permission_classes = [permissions.AllowAny]
+    authentication_classes = []
     pagination_class = PageNumberPagination
 
     def get(self, request):

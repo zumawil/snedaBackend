@@ -10,7 +10,7 @@ import threading
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken
-from .permissions import IsVerifiedUser, IsAdminUser
+from .permissions import IsVerifiedUser, IsAdminUser, IsVerifiedOrGuest
     
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse
@@ -36,10 +36,32 @@ def verify_user_otp(user, otp_input):
     totp = pyotp.TOTP(user.otp_secret, interval=300)
     if totp.verify(otp_input):
         user.verified = True
+        if(user.is_guest):
+            user.is_guest = False
+            
         user.otp_secret = None
         user.save()
         return True
     return False
+
+def send_user_otp_job(user):
+    """
+    Helper to trigger OTP generation and email sending via background task.
+    """
+    job = BackgroundJob.objects.create(
+        task_type="send_manual_otp_email",
+        related_object_type="user",
+        related_object_id=user.id,
+        user=user
+    )
+
+    def dispatch_task():
+        from .tasks import send_manual_otp_email_task
+        result = send_manual_otp_email_task.delay(job.id, user.id)
+        job.task_id = result.id
+        job.save(update_fields=['task_id'])
+
+    transaction.on_commit(dispatch_task)
 
 class VerifyOTPView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -89,7 +111,7 @@ class VerifyOTPView(APIView):
                 secure=not settings.DEBUG,
                 samesite="Lax",
                 max_age=604800,
-                path="/auth/refresh/",
+                path="/",
             )
 
             return response
@@ -262,7 +284,7 @@ def get_csrf(request):
     return JsonResponse({"detail": "CSRF cookie set"})
 
 class UserProfileView(APIView):
-    permission_classes = [IsVerifiedUser]
+    permission_classes = [IsVerifiedOrGuest]
 
     def get(self, request):
         user = request.user
@@ -336,22 +358,14 @@ class LogoutUserView(APIView):
             message="Logged out successfully",
             status_code=status.HTTP_200_OK
         )
-        if response.cookies.get('access'):
-            response.delete_cookie('access')
-            response.delete_cookie('refresh')
-            return api_response(
-                success=True,
-                message='logged out successfully',
-                status_code=status.HTTP_200_OK
-            )
-        else:
-            return api_response(
-                success=False,
-                data=None,
-                error="No active session",
-                message="User is not logged in",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
+        
+        # Always attempt to delete cookies to ensure client state is cleared
+        # Flag settings (path, samesite) must match those used during set_cookie
+        response.delete_cookie("access", path="/", samesite="Lax")
+        response.delete_cookie("refresh", path="/", samesite="Lax")
+        response.delete_cookie("sessionid", path="/", samesite="Lax")
+        
+        return response
 
 
 class RequestOTPView(APIView):
@@ -529,10 +543,19 @@ class ResetPasswordView(APIView):
         uid = request.data.get('uid')
         token = request.data.get('token')
 
-        user_id = urlsafe_base64_decode(uid).decode()
+        if not uid or not token:
+            return api_response(
+                success=False,
+                data=None,
+                error="Invalid fields",
+                message="UID and Token are required to reset password",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
-            user = get_object_or_404(CustomUser, pk=user_id)
-        except CustomUser.DoesNotExist():
+            user_id = urlsafe_base64_decode(uid).decode()
+            user = CustomUser.objects.get(pk=user_id)
+        except (CustomUser.DoesNotExist, TypeError, ValueError, OverflowError):
             return api_response(
                 success=False,
                 data=None,
@@ -621,3 +644,87 @@ class SearchUsers(APIView):
             status_code=status.HTTP_200_OK,
             error=True
         )
+
+
+import uuid
+
+class GuessSessionView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_scope = 'sensitive'
+    authentication_classes = []
+
+    
+    def create_guest_user(self, email):
+        # generate guest email
+            user = CustomUser.objects.create(
+                email=email,
+                is_guest=True,
+                verified=False,
+            )
+            user.set_unusable_password()
+            user.save()
+            
+            return user
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return api_response(
+                success=False,
+                data=None,
+                message="Email is required",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # check if the user has already visited 
+        # Handle existing or new guest/user
+        user = CustomUser.objects.filter(email=email).first()
+        user_found = True
+
+        if not user:
+            user = self.create_guest_user(email)
+            user_found = False
+        
+        # Always trigger OTP for this flow to ensure identity verification
+        send_user_otp_job(user)
+
+        refresh = RefreshToken.for_user(user)
+        refresh['is_guest'] = True  #add custom claim
+        
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = api_response(
+            success=True,
+            data={
+                "guest_session": True, 
+                "user_found": user_found,
+                "needs_verification": not user.verified,
+                "is_verified_account": user.verified and not user.is_guest
+            },
+            message="Guest session initialized" if not user.verified else "Account recognized. Please verify identity.",
+            status_code=201
+        )
+
+        # # set access token
+        # response.set_cookie("access", access_token,
+        #     httponly=True, secure= not settings.DEBUG,
+        #     samesite="Lax", max_age=7200, path="/")  # 2hrs for guests
+
+        # # set refresh token
+        # response.set_cookie("refresh", refresh_token,
+        #     httponly=True, secure= not settings.DEBUG,
+        #     samesite="Lax", max_age=7200, path="/")  # 2hrs 
+
+        # # set guest_id cookie
+        # response.set_cookie(
+        #     "guest_id",
+        #     str(user.id),    
+        #     httponly=True,
+        #     secure=not settings.DEBUG,
+        #     samesite="Lax",
+        #     max_age=60 * 60 * 24 * 30,  # 30 days — survives session expiry
+        #     path="/",
+        # )
+
+        return response
